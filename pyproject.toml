@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "truenas-pynetif"
+version = "0.0.1"
+description = "Networking utils for middleware"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "LGPL-2.1+"}
+authors = [
+    {name = "TrueNAS Engineering", email = "dev@truenas.com"}
+]
+maintainers = [
+    {name = "TrueNAS Engineering", email = "dev@truenas.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "pyroute2",
+]
+
+[project.urls]
+Homepage = "https://github.com/truenas/truenas_pynetif"
+Repository = "https://github.com/truenas/truenas_pynetif"
+
+[tool.setuptools]
+packages = ["truenas_pynetif", "truenas_pynetif.address"]
+
+[tool.setuptools.package-data]
+truenas_pynetif = ["py.typed"]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "dist", "build", ".eggs"]
+
+[tool.pylint.format]
+max-line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "dist",
+    "build",
+    ".eggs",
+    ".venv",
+]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
