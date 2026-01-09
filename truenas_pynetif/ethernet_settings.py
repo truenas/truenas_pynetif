@@ -1,6 +1,8 @@
+import subprocess
 from logging import getLogger
 
 from .ethtool import DeviceNotFound, OperationNotSupported, get_ethtool
+from .utils import run
 
 
 logger = getLogger(__name__)
@@ -29,13 +31,53 @@ class EthernetHardwareSettings:
             logger.error('Failed to get capabilities for %s', self._name, exc_info=True)
         return result
 
+    def __set_features__(self, action, capabilities):
+        # c.f. comment in self.__capabilities__()
+        return
+
+        features_to_change = []
+        for cap in capabilities:
+            if action == 'enable' and cap in self.disabled_capabilities:
+                features_to_change.append(cap)
+            elif action == 'disable' and cap in self.enabled_capabilities:
+                features_to_change.append(cap)
+
+        if not features_to_change:
+            return
+
+        cmd = ['ethtool', '-K', self._name]
+        value = 'on' if action == 'enable' else 'off'
+        for feature in features_to_change:
+            if feature not in self.supported_capabilities:
+                logger.error('Feature "%s" not found on interface "%s"', feature, self._name)
+                continue
+            cmd.extend([feature, value])
+
+        if len(cmd) > 3:
+            try:
+                run(cmd)
+            except subprocess.CalledProcessError as e:
+                logger.error('Failed to set features on %s: %s', self._name, e.stderr)
+
     @property
     def enabled_capabilities(self):
         return self._caps['enabled']
 
+    @enabled_capabilities.setter
+    def enabled_capabilities(self, capabilities):
+        # c.f. comment in self.__capabilities__()
+        return
+        self.__set_features__('enable', capabilities)
+
     @property
     def disabled_capabilities(self):
         return self._caps['disabled']
+
+    @disabled_capabilities.setter
+    def disabled_capabilities(self, capabilities):
+        # c.f. comment in self.__capabilities__()
+        return
+        self.__set_features__('disable', capabilities)
 
     @property
     def supported_capabilities(self):
