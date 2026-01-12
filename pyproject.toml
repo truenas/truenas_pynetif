@@ -32,7 +32,7 @@ Homepage = "https://github.com/truenas/truenas_pynetif"
 Repository = "https://github.com/truenas/truenas_pynetif"
 
 [tool.setuptools]
-packages = ["truenas_pynetif", "truenas_pynetif.address"]
+packages = ["truenas_pynetif", "truenas_pynetif.address", "truenas_pynetif.ethtool"]
 
 [tool.setuptools.package-data]
 truenas_pynetif = ["py.typed"]
