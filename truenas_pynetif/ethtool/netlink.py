@@ -7,51 +7,30 @@ from enum import IntEnum
 from types import MappingProxyType
 
 from .constants import (
-    CTRL_ATTR_FAMILY_ID,
-    CTRL_ATTR_FAMILY_NAME,
-    CTRL_CMD_GETFAMILY,
-    ETH_SS_FEATURES,
-    ETH_SS_LINK_MODES,
-    ETHTOOL_A_BITSET_BIT_INDEX,
-    ETHTOOL_A_BITSET_BIT_VALUE,
-    ETHTOOL_A_BITSET_BITS,
-    ETHTOOL_A_BITSET_BITS_BIT,
-    ETHTOOL_A_BITSET_MASK,
-    ETHTOOL_A_BITSET_SIZE,
-    ETHTOOL_A_BITSET_VALUE,
-    ETHTOOL_A_FEATURES_ACTIVE,
-    ETHTOOL_A_FEATURES_HW,
-    ETHTOOL_A_FEATURES_NOCHANGE,
-    ETHTOOL_A_HEADER,
-    ETHTOOL_A_HEADER_DEV_NAME,
-    ETHTOOL_A_HEADER_FLAGS,
-    ETHTOOL_A_LINKINFO_PHYADDR,
-    ETHTOOL_A_LINKINFO_PORT,
-    ETHTOOL_A_LINKINFO_TRANSCEIVER,
-    ETHTOOL_A_LINKMODES_AUTONEG,
-    ETHTOOL_A_LINKMODES_DUPLEX,
-    ETHTOOL_A_LINKMODES_OURS,
-    ETHTOOL_A_LINKMODES_SPEED,
-    ETHTOOL_A_LINKSTATE_LINK,
-    ETHTOOL_A_STRING_INDEX,
-    ETHTOOL_A_STRING_VALUE,
-    ETHTOOL_A_STRINGSET_ID,
-    ETHTOOL_A_STRINGSET_STRINGS,
-    ETHTOOL_A_STRINGSETS_STRINGSET,
-    ETHTOOL_A_STRINGS_STRING,
-    ETHTOOL_A_STRSET_STRINGSETS,
-    ETHTOOL_MSG_FEATURES_GET,
-    ETHTOOL_MSG_LINKINFO_GET,
-    ETHTOOL_MSG_LINKMODES_GET,
-    ETHTOOL_MSG_LINKSTATE_GET,
-    ETHTOOL_MSG_STRSET_GET,
     GENL_ID_CTRL,
     NETLINK_GENERIC,
     NLA_F_NESTED,
-    NLM_F_ACK,
-    NLM_F_REQUEST,
-    NLMSG_ERROR,
+    CtrlAttr,
+    CtrlCmd,
+    EthSS,
+    EthtoolABitset,
+    EthtoolABitsetBit,
+    EthtoolABitsetBits,
+    EthtoolAFeatures,
+    EthtoolAHeader,
+    EthtoolALinkinfo,
+    EthtoolALinkmodes,
+    EthtoolALinkstate,
+    EthtoolAString,
+    EthtoolAStringset,
+    EthtoolAStringsets,
+    EthtoolAStrings,
+    EthtoolAStrset,
+    EthtoolMsg,
+    NLMsgFlags,
+    NLMsgType,
 )
+from ..exceptions import DeviceNotFound, NetlinkError, OperationNotSupported
 
 _link_mode_names: MappingProxyType[int, str] | None = None
 _feature_names: MappingProxyType[int, str] | None = None
@@ -91,18 +70,6 @@ class Duplex(IntEnum):
 class Transceiver(IntEnum):
     INTERNAL = 0
     EXTERNAL = 1
-
-
-class NetlinkError(Exception):
-    pass
-
-
-class DeviceNotFound(NetlinkError):
-    pass
-
-
-class OperationNotSupported(NetlinkError):
-    pass
 
 
 @dataclass(slots=True)
@@ -162,7 +129,7 @@ class EthtoolNetlink:
     def _pack_genlmsg(self, family_id: int, cmd: int, version: int, attrs: bytes) -> bytes:
         genlhdr = struct.pack("BBH", cmd, version, 0)
         payload = genlhdr + attrs
-        return self._pack_nlmsg(family_id, NLM_F_REQUEST | NLM_F_ACK, payload)
+        return self._pack_nlmsg(family_id, NLMsgFlags.REQUEST | NLMsgFlags.ACK, payload)
 
     def _recv_msgs(self) -> list[tuple[int, bytes]]:
         messages = []
@@ -178,7 +145,7 @@ class EthtoolNetlink:
                 )
                 if nlmsg_len < 16:
                     break
-                if nlmsg_type == NLMSG_ERROR:
+                if nlmsg_type == NLMsgType.ERROR:
                     if offset + 20 <= len(data):
                         error = struct.unpack_from("i", data, offset + 16)[0]
                         if error < 0:
@@ -215,57 +182,57 @@ class EthtoolNetlink:
         return self._parse_attrs(data, 0)
 
     def _resolve_family(self, name: str) -> int:
-        attrs = self._pack_nlattr_str(CTRL_ATTR_FAMILY_NAME, name)
-        msg = self._pack_genlmsg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, attrs)
+        attrs = self._pack_nlattr_str(CtrlAttr.FAMILY_NAME, name)
+        msg = self._pack_genlmsg(GENL_ID_CTRL, CtrlCmd.GETFAMILY, 1, attrs)
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == GENL_ID_CTRL:
                 attrs = self._parse_attrs(payload, 4)
-                if CTRL_ATTR_FAMILY_ID in attrs:
-                    return struct.unpack("H", attrs[CTRL_ATTR_FAMILY_ID][:2])[0]
+                if CtrlAttr.FAMILY_ID in attrs:
+                    return struct.unpack("H", attrs[CtrlAttr.FAMILY_ID][:2])[0]
         raise NetlinkError(f"Could not resolve family: {name}")
 
     def _make_header(self, ifname: str, flags: int = 0) -> bytes:
-        name_attr = self._pack_nlattr_str(ETHTOOL_A_HEADER_DEV_NAME, ifname)
+        name_attr = self._pack_nlattr_str(EthtoolAHeader.DEV_NAME, ifname)
         if flags:
-            name_attr += self._pack_nlattr_u32(ETHTOOL_A_HEADER_FLAGS, flags)
-        return self._pack_nlattr_nested(ETHTOOL_A_HEADER, name_attr)
+            name_attr += self._pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
+        return self._pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
 
     def _parse_bitset(self, data: bytes) -> tuple[int, set[int], set[int]]:
         attrs = self._parse_nested_attrs(data)
         size = 0
-        if ETHTOOL_A_BITSET_SIZE in attrs:
-            size = struct.unpack("I", attrs[ETHTOOL_A_BITSET_SIZE][:4])[0]
+        if EthtoolABitset.SIZE in attrs:
+            size = struct.unpack("I", attrs[EthtoolABitset.SIZE][:4])[0]
         value_bits: set[int] = set()
         mask_bits: set[int] = set()
-        if ETHTOOL_A_BITSET_VALUE in attrs:
-            value_data = attrs[ETHTOOL_A_BITSET_VALUE]
+        if EthtoolABitset.VALUE in attrs:
+            value_data = attrs[EthtoolABitset.VALUE]
             for byte_idx, byte_val in enumerate(value_data):
                 for bit in range(8):
                     if byte_val & (1 << bit):
                         value_bits.add(byte_idx * 8 + bit)
-        if ETHTOOL_A_BITSET_MASK in attrs:
-            mask_data = attrs[ETHTOOL_A_BITSET_MASK]
+        if EthtoolABitset.MASK in attrs:
+            mask_data = attrs[EthtoolABitset.MASK]
             for byte_idx, byte_val in enumerate(mask_data):
                 for bit in range(8):
                     if byte_val & (1 << bit):
                         mask_bits.add(byte_idx * 8 + bit)
-        if ETHTOOL_A_BITSET_BITS in attrs:
-            bits_data = attrs[ETHTOOL_A_BITSET_BITS]
+        if EthtoolABitset.BITS in attrs:
+            bits_data = attrs[EthtoolABitset.BITS]
             offset = 0
             while offset + 4 <= len(bits_data):
                 nla_len, nla_type = struct.unpack_from("HH", bits_data, offset)
                 if nla_len < 4:
                     break
-                if (nla_type & 0x7FFF) == ETHTOOL_A_BITSET_BITS_BIT:
+                if (nla_type & 0x7FFF) == EthtoolABitsetBits.BIT:
                     bit_data = bits_data[offset + 4 : offset + nla_len]
                     bit_attrs = self._parse_nested_attrs(bit_data)
                     bit_index = None
                     bit_value = True
-                    if ETHTOOL_A_BITSET_BIT_INDEX in bit_attrs:
-                        bit_index = struct.unpack("I", bit_attrs[ETHTOOL_A_BITSET_BIT_INDEX][:4])[0]
-                    if ETHTOOL_A_BITSET_BIT_VALUE in bit_attrs:
-                        val_data = bit_attrs[ETHTOOL_A_BITSET_BIT_VALUE]
+                    if EthtoolABitsetBit.INDEX in bit_attrs:
+                        bit_index = struct.unpack("I", bit_attrs[EthtoolABitsetBit.INDEX][:4])[0]
+                    if EthtoolABitsetBit.VALUE in bit_attrs:
+                        val_data = bit_attrs[EthtoolABitsetBit.VALUE]
                         if len(val_data) > 0:
                             bit_value = val_data[0] != 0
                     if bit_index is not None and bit_value:
@@ -278,7 +245,7 @@ class EthtoolNetlink:
     def get_link_modes(self, ifname: str) -> dict:
         link_mode_names = self._get_link_mode_names()
         header = self._make_header(ifname)
-        msg = self._pack_genlmsg(self._family_id, ETHTOOL_MSG_LINKMODES_GET, 1, header)
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKMODES_GET, 1, header)
         self._sock.send(msg)
         result = {
             "speed": None,
@@ -289,20 +256,20 @@ class EthtoolNetlink:
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                if ETHTOOL_A_LINKMODES_SPEED in attrs:
-                    speed = struct.unpack("I", attrs[ETHTOOL_A_LINKMODES_SPEED][:4])[0]
+                if EthtoolALinkmodes.SPEED in attrs:
+                    speed = struct.unpack("I", attrs[EthtoolALinkmodes.SPEED][:4])[0]
                     if speed != 0xFFFFFFFF:
                         result["speed"] = speed
-                if ETHTOOL_A_LINKMODES_DUPLEX in attrs:
-                    duplex = attrs[ETHTOOL_A_LINKMODES_DUPLEX][0]
+                if EthtoolALinkmodes.DUPLEX in attrs:
+                    duplex = attrs[EthtoolALinkmodes.DUPLEX][0]
                     if duplex == Duplex.FULL:
                         result["duplex"] = "Full"
                     elif duplex == Duplex.HALF:
                         result["duplex"] = "Half"
-                if ETHTOOL_A_LINKMODES_AUTONEG in attrs:
-                    result["autoneg"] = attrs[ETHTOOL_A_LINKMODES_AUTONEG][0] == 1
-                if ETHTOOL_A_LINKMODES_OURS in attrs:
-                    _, value_bits, _ = self._parse_bitset(attrs[ETHTOOL_A_LINKMODES_OURS])
+                if EthtoolALinkmodes.AUTONEG in attrs:
+                    result["autoneg"] = attrs[EthtoolALinkmodes.AUTONEG][0] == 1
+                if EthtoolALinkmodes.OURS in attrs:
+                    _, value_bits, _ = self._parse_bitset(attrs[EthtoolALinkmodes.OURS])
                     modes = []
                     for bit in sorted(value_bits):
                         if bit in link_mode_names:
@@ -312,7 +279,7 @@ class EthtoolNetlink:
 
     def get_link_info(self, ifname: str) -> dict:
         header = self._make_header(ifname)
-        msg = self._pack_genlmsg(self._family_id, ETHTOOL_MSG_LINKINFO_GET, 1, header)
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKINFO_GET, 1, header)
         self._sock.send(msg)
         result = {
             "port": "Unknown",
@@ -323,53 +290,53 @@ class EthtoolNetlink:
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                if ETHTOOL_A_LINKINFO_PORT in attrs:
-                    port = attrs[ETHTOOL_A_LINKINFO_PORT][0]
+                if EthtoolALinkinfo.PORT in attrs:
+                    port = attrs[EthtoolALinkinfo.PORT][0]
                     result["port_num"] = port
                     result["port"] = PORT_TYPE_NAMES.get(port, f"Unknown({port})")
-                if ETHTOOL_A_LINKINFO_TRANSCEIVER in attrs:
-                    xcvr = attrs[ETHTOOL_A_LINKINFO_TRANSCEIVER][0]
+                if EthtoolALinkinfo.TRANSCEIVER in attrs:
+                    xcvr = attrs[EthtoolALinkinfo.TRANSCEIVER][0]
                     result["transceiver"] = "external" if xcvr == Transceiver.EXTERNAL else "internal"
-                if ETHTOOL_A_LINKINFO_PHYADDR in attrs:
-                    result["phyaddr"] = attrs[ETHTOOL_A_LINKINFO_PHYADDR][0]
+                if EthtoolALinkinfo.PHYADDR in attrs:
+                    result["phyaddr"] = attrs[EthtoolALinkinfo.PHYADDR][0]
         return result
 
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)
-        msg = self._pack_genlmsg(self._family_id, ETHTOOL_MSG_LINKSTATE_GET, 1, header)
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKSTATE_GET, 1, header)
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                if ETHTOOL_A_LINKSTATE_LINK in attrs:
-                    return attrs[ETHTOOL_A_LINKSTATE_LINK][0] == 1
+                if EthtoolALinkstate.LINK in attrs:
+                    return attrs[EthtoolALinkstate.LINK][0] == 1
         return False
 
     def _query_string_set(self, string_set_id: int, ifname: str = "lo") -> dict[int, str]:
-        stringset_id = self._pack_nlattr_u32(ETHTOOL_A_STRINGSET_ID, string_set_id)
-        stringset = self._pack_nlattr_nested(ETHTOOL_A_STRINGSETS_STRINGSET, stringset_id)
-        stringsets = self._pack_nlattr_nested(ETHTOOL_A_STRSET_STRINGSETS, stringset)
+        stringset_id = self._pack_nlattr_u32(EthtoolAStringset.ID, string_set_id)
+        stringset = self._pack_nlattr_nested(EthtoolAStringsets.STRINGSET, stringset_id)
+        stringsets = self._pack_nlattr_nested(EthtoolAStrset.STRINGSETS, stringset)
         header = self._make_header(ifname)
-        msg = self._pack_genlmsg(self._family_id, ETHTOOL_MSG_STRSET_GET, 1, header + stringsets)
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.STRSET_GET, 1, header + stringsets)
         self._sock.send(msg)
         names: dict[int, str] = {}
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                if ETHTOOL_A_STRSET_STRINGSETS in attrs:
-                    self._parse_stringsets(attrs[ETHTOOL_A_STRSET_STRINGSETS], names)
+                if EthtoolAStrset.STRINGSETS in attrs:
+                    self._parse_stringsets(attrs[EthtoolAStrset.STRINGSETS], names)
         return names
 
     def _get_feature_names(self) -> dict[int, str] | MappingProxyType[int, str]:
         if self._feature_names is not None:
             return self._feature_names
-        self._feature_names = self._query_string_set(ETH_SS_FEATURES)
+        self._feature_names = self._query_string_set(EthSS.FEATURES)
         return self._feature_names
 
     def _get_link_mode_names(self) -> dict[int, str] | MappingProxyType[int, str]:
         if self._link_mode_names is not None:
             return self._link_mode_names
-        self._link_mode_names = self._query_string_set(ETH_SS_LINK_MODES)
+        self._link_mode_names = self._query_string_set(EthSS.LINK_MODES)
         return self._link_mode_names
 
     def _parse_stringsets(self, data: bytes, names: dict[int, str]):
@@ -378,14 +345,14 @@ class EthtoolNetlink:
             nla_len, nla_type = struct.unpack_from("HH", data, offset)
             if nla_len < 4:
                 break
-            if (nla_type & 0x7FFF) == ETHTOOL_A_STRINGSETS_STRINGSET:
+            if (nla_type & 0x7FFF) == EthtoolAStringsets.STRINGSET:
                 self._parse_stringset(data[offset + 4 : offset + nla_len], names)
             offset += (nla_len + 3) & ~3
 
     def _parse_stringset(self, data: bytes, names: dict[int, str]):
         attrs = self._parse_nested_attrs(data)
-        if ETHTOOL_A_STRINGSET_STRINGS in attrs:
-            self._parse_strings(attrs[ETHTOOL_A_STRINGSET_STRINGS], names)
+        if EthtoolAStringset.STRINGS in attrs:
+            self._parse_strings(attrs[EthtoolAStringset.STRINGS], names)
 
     def _parse_strings(self, data: bytes, names: dict[int, str]):
         offset = 0
@@ -393,18 +360,18 @@ class EthtoolNetlink:
             nla_len, nla_type = struct.unpack_from("HH", data, offset)
             if nla_len < 4:
                 break
-            if (nla_type & 0x7FFF) == ETHTOOL_A_STRINGS_STRING:
+            if (nla_type & 0x7FFF) == EthtoolAStrings.STRING:
                 string_attrs = self._parse_nested_attrs(data[offset + 4 : offset + nla_len])
-                if ETHTOOL_A_STRING_INDEX in string_attrs and ETHTOOL_A_STRING_VALUE in string_attrs:
-                    idx = struct.unpack("I", string_attrs[ETHTOOL_A_STRING_INDEX][:4])[0]
-                    val = string_attrs[ETHTOOL_A_STRING_VALUE].rstrip(b"\x00").decode("utf-8", errors="replace")
+                if EthtoolAString.INDEX in string_attrs and EthtoolAString.VALUE in string_attrs:
+                    idx = struct.unpack("I", string_attrs[EthtoolAString.INDEX][:4])[0]
+                    val = string_attrs[EthtoolAString.VALUE].rstrip(b"\x00").decode("utf-8", errors="replace")
                     names[idx] = val
             offset += (nla_len + 3) & ~3
 
     def get_features(self, ifname: str) -> dict:
         feature_names = self._get_feature_names()
         header = self._make_header(ifname)
-        msg = self._pack_genlmsg(self._family_id, ETHTOOL_MSG_FEATURES_GET, 1, header)
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEATURES_GET, 1, header)
         self._sock.send(msg)
         result: dict[str, list[str]] = {"enabled": [], "disabled": [], "supported": []}
         hw_bits: set[int] = set()
@@ -413,12 +380,12 @@ class EthtoolNetlink:
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                if ETHTOOL_A_FEATURES_HW in attrs:
-                    _, hw_bits, _ = self._parse_bitset(attrs[ETHTOOL_A_FEATURES_HW])
-                if ETHTOOL_A_FEATURES_ACTIVE in attrs:
-                    _, active_bits, _ = self._parse_bitset(attrs[ETHTOOL_A_FEATURES_ACTIVE])
-                if ETHTOOL_A_FEATURES_NOCHANGE in attrs:
-                    _, nochange_bits, _ = self._parse_bitset(attrs[ETHTOOL_A_FEATURES_NOCHANGE])
+                if EthtoolAFeatures.HW in attrs:
+                    _, hw_bits, _ = self._parse_bitset(attrs[EthtoolAFeatures.HW])
+                if EthtoolAFeatures.ACTIVE in attrs:
+                    _, active_bits, _ = self._parse_bitset(attrs[EthtoolAFeatures.ACTIVE])
+                if EthtoolAFeatures.NOCHANGE in attrs:
+                    _, nochange_bits, _ = self._parse_bitset(attrs[EthtoolAFeatures.NOCHANGE])
         for idx in hw_bits:
             name = feature_names.get(idx, f"feature-{idx}")
             if idx not in nochange_bits:
@@ -438,8 +405,8 @@ def _ensure_global_caches() -> tuple[MappingProxyType[int, str], MappingProxyTyp
         if _link_mode_names is not None and _feature_names is not None:
             return _link_mode_names, _feature_names
         with EthtoolNetlink() as eth:
-            _link_mode_names = MappingProxyType(eth._query_string_set(ETH_SS_LINK_MODES))
-            _feature_names = MappingProxyType(eth._query_string_set(ETH_SS_FEATURES))
+            _link_mode_names = MappingProxyType(eth._query_string_set(EthSS.LINK_MODES))
+            _feature_names = MappingProxyType(eth._query_string_set(EthSS.FEATURES))
         return _link_mode_names, _feature_names
 
 
