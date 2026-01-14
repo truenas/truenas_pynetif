@@ -56,16 +56,39 @@ class AddressInfo:
     ifname: str | None = field(default=None, compare=False, hash=False)
     local: str | None = field(default=None, compare=False, hash=False)
     label: str | None = field(default=None, compare=False, hash=False)
+    # Extended fields from IFA_PROTO and IFA_CACHEINFO
+    proto: int | None = field(default=None, compare=False, hash=False)
+    valid_lft: int | None = field(
+        default=None, compare=False, hash=False
+    )  # seconds, None=forever
+    preferred_lft: int | None = field(
+        default=None, compare=False, hash=False
+    )  # seconds, None=forever
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class LinkInfo:
+    # Core fields
     index: int
     flags: int
     mtu: int
     operstate: int
-    address: str | None
-    perm_address: str | None
+    address: str | None = None
+    perm_address: str | None = None
+    broadcast: str | None = None
+    # Extended fields
+    txqlen: int = 0
+    min_mtu: int = 0
+    max_mtu: int = 0
+    carrier: bool = False
+    carrier_changes: int = 0
+    num_tx_queues: int = 1
+    num_rx_queues: int = 1
+    # Parent device info (for USB detection, etc.)
+    parentbus: str | None = None
+    parentdev: str | None = None
+    # Alternate names
+    altnames: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -188,10 +211,12 @@ class AddressNetlink:
         if not ifname:
             return None
 
+        # Core fields
         mtu = 0
         operstate = 0
         address = None
         perm_address = None
+        broadcast = None
 
         if IFLAAttr.MTU in attrs:
             mtu = struct.unpack("I", attrs[IFLAAttr.MTU][:4])[0]
@@ -201,6 +226,68 @@ class AddressNetlink:
             address = attrs[IFLAAttr.ADDRESS].hex(":")
         if IFLAAttr.PERM_ADDRESS in attrs:
             perm_address = attrs[IFLAAttr.PERM_ADDRESS].hex(":")
+        if IFLAAttr.BROADCAST in attrs:
+            broadcast = attrs[IFLAAttr.BROADCAST].hex(":")
+
+        # Extended fields
+        txqlen = 0
+        min_mtu = 0
+        max_mtu = 0
+        carrier = False
+        carrier_changes = 0
+        num_tx_queues = 1
+        num_rx_queues = 1
+
+        if IFLAAttr.TXQLEN in attrs:
+            txqlen = struct.unpack("I", attrs[IFLAAttr.TXQLEN][:4])[0]
+        if IFLAAttr.MIN_MTU in attrs:
+            min_mtu = struct.unpack("I", attrs[IFLAAttr.MIN_MTU][:4])[0]
+        if IFLAAttr.MAX_MTU in attrs:
+            max_mtu = struct.unpack("I", attrs[IFLAAttr.MAX_MTU][:4])[0]
+        if IFLAAttr.CARRIER in attrs:
+            carrier = attrs[IFLAAttr.CARRIER][0] != 0
+        if IFLAAttr.CARRIER_CHANGES in attrs:
+            carrier_changes = struct.unpack("I", attrs[IFLAAttr.CARRIER_CHANGES][:4])[0]
+        if IFLAAttr.NUM_TX_QUEUES in attrs:
+            num_tx_queues = struct.unpack("I", attrs[IFLAAttr.NUM_TX_QUEUES][:4])[0]
+        if IFLAAttr.NUM_RX_QUEUES in attrs:
+            num_rx_queues = struct.unpack("I", attrs[IFLAAttr.NUM_RX_QUEUES][:4])[0]
+
+        # Parent device info (for USB detection, etc.)
+        parentbus = None
+        parentdev = None
+
+        if IFLAAttr.PARENT_DEV_BUS_NAME in attrs:
+            parentbus = (
+                attrs[IFLAAttr.PARENT_DEV_BUS_NAME]
+                .rstrip(b"\x00")
+                .decode("utf-8", errors="replace")
+            )
+        if IFLAAttr.PARENT_DEV_NAME in attrs:
+            parentdev = (
+                attrs[IFLAAttr.PARENT_DEV_NAME]
+                .rstrip(b"\x00")
+                .decode("utf-8", errors="replace")
+            )
+
+        # Alternate names from IFLA_PROP_LIST
+        altnames: list[str] = []
+        if IFLAAttr.PROP_LIST in attrs:
+            # PROP_LIST may contain multiple ALT_IFNAME entries
+            # Since _parse_attrs only keeps last value, we need to iterate manually
+            offset = 0
+            prop_data = attrs[IFLAAttr.PROP_LIST]
+            while offset + 4 <= len(prop_data):
+                nla_len, nla_type = struct.unpack_from("HH", prop_data, offset)
+                if nla_len < 4:
+                    break
+                nla_type_base = nla_type & 0x7FFF
+                if nla_type_base == IFLAAttr.ALT_IFNAME:
+                    attr_data = prop_data[offset + 4 : offset + nla_len]
+                    altnames.append(
+                        attr_data.rstrip(b"\x00").decode("utf-8", errors="replace")
+                    )
+                offset += (nla_len + 3) & ~3
 
         return ifname, LinkInfo(
             index=ifi_index,
@@ -209,6 +296,17 @@ class AddressNetlink:
             operstate=operstate,
             address=address,
             perm_address=perm_address,
+            broadcast=broadcast,
+            txqlen=txqlen,
+            min_mtu=min_mtu,
+            max_mtu=max_mtu,
+            carrier=carrier,
+            carrier_changes=carrier_changes,
+            num_tx_queues=num_tx_queues,
+            num_rx_queues=num_rx_queues,
+            parentbus=parentbus,
+            parentdev=parentdev,
+            altnames=tuple(altnames),
         )
 
     def get_links(self) -> dict[str, LinkInfo]:
@@ -300,10 +398,27 @@ class AddressNetlink:
         if IFAAttr.BROADCAST in attrs:
             broadcast = self._format_address(ifa_family, attrs[IFAAttr.BROADCAST])
         if IFAAttr.LABEL in attrs:
-            label = attrs[IFAAttr.LABEL].rstrip(b"\x00").decode("utf-8", errors="replace")
+            label = (
+                attrs[IFAAttr.LABEL].rstrip(b"\x00").decode("utf-8", errors="replace")
+            )
 
         if ifname_cache is not None:
             ifname = self._resolve_ifname(ifa_index, ifname_cache)
+
+        # Extended fields
+        proto = None
+        valid_lft = None
+        preferred_lft = None
+
+        if IFAAttr.PROTO in attrs:
+            proto = attrs[IFAAttr.PROTO][0]
+
+        if IFAAttr.CACHEINFO in attrs and len(attrs[IFAAttr.CACHEINFO]) >= 8:
+            # struct ifa_cacheinfo: ifa_prefered(u32), ifa_valid(u32), cstamp(u32), tstamp(u32)
+            ifa_prefered, ifa_valid = struct.unpack("II", attrs[IFAAttr.CACHEINFO][:8])
+            # 0xFFFFFFFF means forever - convert to None
+            preferred_lft = None if ifa_prefered == 0xFFFFFFFF else ifa_prefered
+            valid_lft = None if ifa_valid == 0xFFFFFFFF else ifa_valid
 
         return AddressInfo(
             family=ifa_family,
@@ -316,6 +431,9 @@ class AddressNetlink:
             ifname=ifname,
             local=local,
             label=label,
+            proto=proto,
+            valid_lft=valid_lft,
+            preferred_lft=preferred_lft,
         )
 
     def get_addresses(self) -> list[AddressInfo]:
