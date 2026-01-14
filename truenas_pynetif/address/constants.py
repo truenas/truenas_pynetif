@@ -3,8 +3,18 @@ from enum import IntEnum, IntFlag
 # Netlink protocol
 NETLINK_ROUTE = 0
 
-# Netlink attribute flag
-NLA_F_NESTED = 0x8000
+# Netlink socket option level
+SOL_NETLINK = 270
+
+
+class NetlinkSockOpt(IntEnum):
+    """Netlink socket options for setsockopt(SOL_NETLINK, ...)"""
+    GET_STRICT_CHK = 12
+
+
+class NLAttrFlags(IntFlag):
+    """Netlink attribute flags"""
+    NESTED = 0x8000
 
 
 class NLMsgFlags(IntFlag):

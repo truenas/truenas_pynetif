@@ -5,10 +5,13 @@ from dataclasses import dataclass, field
 
 from .constants import (
     NETLINK_ROUTE,
-    NLA_F_NESTED,
+    SOL_NETLINK,
     AddressFamily,
     IFAAttr,
     IFLAAttr,
+    IFOperState,
+    NetlinkSockOpt,
+    NLAttrFlags,
     NLMsgFlags,
     NLMsgType,
     RTEXTFilter,
@@ -26,6 +29,7 @@ __all__ = (
     "AddressNetlink",
     "DeviceNotFound",
     "DumpInterrupted",
+    "IFOperState",
     "LinkInfo",
     "NetlinkError",
     "OperationNotSupported",
@@ -40,15 +44,17 @@ _address_ctx: ContextVar["AddressNetlink | None"] = ContextVar(
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class AddressInfo:
+    # Fields used for equality and hashing
     family: int
     prefixlen: int
-    flags: int
-    scope: int
-    index: int
     address: str
-    local: str | None
-    broadcast: str | None
-    label: str | None
+    broadcast: str | None = None
+    # Fields below are informational only - not used for equality/hashing
+    flags: int = field(default=0, compare=False, hash=False)
+    scope: int = field(default=0, compare=False, hash=False)
+    index: int = field(default=0, compare=False, hash=False)
+    local: str | None = field(default=None, compare=False, hash=False)
+    label: str | None = field(default=None, compare=False, hash=False)
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -98,7 +104,7 @@ class AddressNetlink:
         return self._pack_nlattr(attr_type, struct.pack("I", val))
 
     def _pack_nlattr_nested(self, attr_type: int, attrs: bytes) -> bytes:
-        return self._pack_nlattr(attr_type | NLA_F_NESTED, attrs)
+        return self._pack_nlattr(attr_type | NLAttrFlags.NESTED, attrs)
 
     def _next_seq(self) -> int:
         self._seq += 1
@@ -161,7 +167,53 @@ class AddressNetlink:
     def _parse_nested_attrs(self, data: bytes) -> dict[int, bytes]:
         return self._parse_attrs(data, 0)
 
+    def _parse_link_payload(self, payload: bytes) -> tuple[str, LinkInfo] | None:
+        """Parse a NEWLINK payload into (ifname, LinkInfo). Returns None if invalid."""
+        if len(payload) < 16:
+            return None
+
+        # Parse ifinfomsg header
+        ifi_family, ifi_type, ifi_index, ifi_flags, ifi_change = struct.unpack_from(
+            "BxHiII", payload, 0
+        )
+        # Parse attributes after ifinfomsg (16 bytes)
+        attrs = self._parse_attrs(payload, 16)
+
+        ifname = None
+        if IFLAAttr.IFNAME in attrs:
+            ifname = (
+                attrs[IFLAAttr.IFNAME]
+                .rstrip(b"\x00")
+                .decode("utf-8", errors="replace")
+            )
+        if not ifname:
+            return None
+
+        mtu = 0
+        operstate = 0
+        address = None
+        perm_address = None
+
+        if IFLAAttr.MTU in attrs:
+            mtu = struct.unpack("I", attrs[IFLAAttr.MTU][:4])[0]
+        if IFLAAttr.OPERSTATE in attrs:
+            operstate = attrs[IFLAAttr.OPERSTATE][0]
+        if IFLAAttr.ADDRESS in attrs:
+            address = attrs[IFLAAttr.ADDRESS].hex(":")
+        if IFLAAttr.PERM_ADDRESS in attrs:
+            perm_address = attrs[IFLAAttr.PERM_ADDRESS].hex(":")
+
+        return ifname, LinkInfo(
+            index=ifi_index,
+            flags=ifi_flags,
+            mtu=mtu,
+            operstate=operstate,
+            address=address,
+            perm_address=perm_address,
+        )
+
     def get_links(self) -> dict[str, LinkInfo]:
+        """Get all network interfaces."""
         # Build ifinfomsg: family(1) + pad(1) + type(2) + index(4) + flags(4) + change(4) = 16 bytes
         ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, 0, 0, 0)
         # Add IFLA_EXT_MASK to request extended info but skip stats
@@ -174,55 +226,89 @@ class AddressNetlink:
         )
         self._sock.send(msg)
 
-        links: dict[str, LinkInfo] = dict()
+        links: dict[str, LinkInfo] = {}
         for msg_type, payload in self._recv_msgs():
             if msg_type != RTMType.NEWLINK:
                 continue
-            if len(payload) < 16:
-                continue
-            # Parse ifinfomsg header
-            ifi_family, ifi_type, ifi_index, ifi_flags, ifi_change = struct.unpack_from(
-                "BxHiII", payload, 0
-            )
-            # Parse attributes after ifinfomsg (16 bytes)
-            attrs = self._parse_attrs(payload, 16)
-
-            ifname = None
-            if IFLAAttr.IFNAME in attrs:
-                ifname = (
-                    attrs[IFLAAttr.IFNAME]
-                    .rstrip(b"\x00")
-                    .decode("utf-8", errors="replace")
-                )
-            if not ifname:
-                continue
-
-            mtu = 0
-            operstate = 0
-            address = None
-            perm_address = None
-
-            if IFLAAttr.MTU in attrs:
-                mtu = struct.unpack("I", attrs[IFLAAttr.MTU][:4])[0]
-            if IFLAAttr.OPERSTATE in attrs:
-                operstate = attrs[IFLAAttr.OPERSTATE][0]
-            if IFLAAttr.ADDRESS in attrs:
-                address = attrs[IFLAAttr.ADDRESS].hex(":")
-            if IFLAAttr.PERM_ADDRESS in attrs:
-                perm_address = attrs[IFLAAttr.PERM_ADDRESS].hex(":")
-
-            links[ifname] = LinkInfo(
-                index=ifi_index,
-                flags=ifi_flags,
-                mtu=mtu,
-                operstate=operstate,
-                address=address,
-                perm_address=perm_address,
-            )
+            if result := self._parse_link_payload(payload):
+                ifname, link_info = result
+                links[ifname] = link_info
 
         return links
 
+    def get_link(self, name: str) -> LinkInfo:
+        """Get link info for a single interface by name."""
+        try:
+            index = socket.if_nametoindex(name)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {name}")
+
+        # Build ifinfomsg with specific index
+        # Use ACK flag to get a terminating response (no DUMP = single interface)
+        ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+        msg = self._pack_nlmsg(
+            RTMType.GETLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg
+        )
+        self._sock.send(msg)
+
+        for msg_type, payload in self._recv_msgs():
+            if msg_type != RTMType.NEWLINK:
+                continue
+            if result := self._parse_link_payload(payload):
+                return result[1]
+
+        raise DeviceNotFound(f"No such device: {name}")
+
+    def _parse_address_payload(self, payload: bytes) -> AddressInfo | None:
+        """Parse a NEWADDR payload into AddressInfo. Returns None if invalid."""
+        if len(payload) < 8:
+            return None
+
+        # Parse ifaddrmsg header
+        ifa_family, ifa_prefixlen, ifa_flags, ifa_scope, ifa_index = (
+            struct.unpack_from("BBBBI", payload, 0)
+        )
+        # Parse attributes after ifaddrmsg (8 bytes)
+        attrs = self._parse_attrs(payload, 8)
+
+        # Get address - prefer IFA_ADDRESS, fall back to IFA_LOCAL
+        address = None
+        if IFAAttr.ADDRESS in attrs:
+            address = self._format_address(ifa_family, attrs[IFAAttr.ADDRESS])
+        elif IFAAttr.LOCAL in attrs:
+            address = self._format_address(ifa_family, attrs[IFAAttr.LOCAL])
+        if not address:
+            return None
+
+        local = None
+        broadcast = None
+        label = None
+
+        if IFAAttr.LOCAL in attrs:
+            local = self._format_address(ifa_family, attrs[IFAAttr.LOCAL])
+        if IFAAttr.BROADCAST in attrs:
+            broadcast = self._format_address(ifa_family, attrs[IFAAttr.BROADCAST])
+        if IFAAttr.LABEL in attrs:
+            label = (
+                attrs[IFAAttr.LABEL]
+                .rstrip(b"\x00")
+                .decode("utf-8", errors="replace")
+            )
+
+        return AddressInfo(
+            family=ifa_family,
+            prefixlen=ifa_prefixlen,
+            address=address,
+            broadcast=broadcast,
+            flags=ifa_flags,
+            scope=ifa_scope,
+            index=ifa_index,
+            local=local,
+            label=label,
+        )
+
     def get_addresses(self) -> list[AddressInfo]:
+        """Get all addresses for all interfaces."""
         # Build ifaddrmsg: family(1) + prefixlen(1) + flags(1) + scope(1) + index(4) = 8 bytes
         ifaddrmsg = struct.pack("BBBBI", AddressFamily.UNSPEC, 0, 0, 0, 0)
         msg = self._pack_nlmsg(
@@ -234,52 +320,34 @@ class AddressNetlink:
         for msg_type, payload in self._recv_msgs():
             if msg_type != RTMType.NEWADDR:
                 continue
-            if len(payload) < 8:
+            if addr_info := self._parse_address_payload(payload):
+                addresses.append(addr_info)
+
+        return addresses
+
+    def get_link_addresses(self, name: str) -> list[AddressInfo]:
+        """Get addresses for a single interface by name."""
+        try:
+            index = socket.if_nametoindex(name)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {name}")
+
+        # Enable strict checking so kernel filters by interface index
+        self._sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 1)
+
+        # Build ifaddrmsg with specific index - kernel will filter with strict check enabled
+        ifaddrmsg = struct.pack("BBBBI", AddressFamily.UNSPEC, 0, 0, 0, index)
+        msg = self._pack_nlmsg(
+            RTMType.GETADDR, NLMsgFlags.REQUEST | NLMsgFlags.DUMP, ifaddrmsg
+        )
+        self._sock.send(msg)
+
+        addresses: list[AddressInfo] = []
+        for msg_type, payload in self._recv_msgs():
+            if msg_type != RTMType.NEWADDR:
                 continue
-            # Parse ifaddrmsg header
-            ifa_family, ifa_prefixlen, ifa_flags, ifa_scope, ifa_index = (
-                struct.unpack_from("BBBBI", payload, 0)
-            )
-            # Parse attributes after ifaddrmsg (8 bytes)
-            attrs = self._parse_attrs(payload, 8)
-
-            # Get address - prefer IFA_ADDRESS, fall back to IFA_LOCAL
-            address = None
-            if IFAAttr.ADDRESS in attrs:
-                address = self._format_address(ifa_family, attrs[IFAAttr.ADDRESS])
-            elif IFAAttr.LOCAL in attrs:
-                address = self._format_address(ifa_family, attrs[IFAAttr.LOCAL])
-            if not address:
-                continue
-
-            local = None
-            broadcast = None
-            label = None
-
-            if IFAAttr.LOCAL in attrs:
-                local = self._format_address(ifa_family, attrs[IFAAttr.LOCAL])
-            if IFAAttr.BROADCAST in attrs:
-                broadcast = self._format_address(ifa_family, attrs[IFAAttr.BROADCAST])
-            if IFAAttr.LABEL in attrs:
-                label = (
-                    attrs[IFAAttr.LABEL]
-                    .rstrip(b"\x00")
-                    .decode("utf-8", errors="replace")
-                )
-
-            addresses.append(
-                AddressInfo(
-                    family=ifa_family,
-                    prefixlen=ifa_prefixlen,
-                    flags=ifa_flags,
-                    scope=ifa_scope,
-                    index=ifa_index,
-                    address=address,
-                    local=local,
-                    broadcast=broadcast,
-                    label=label,
-                )
-            )
+            if addr_info := self._parse_address_payload(payload):
+                addresses.append(addr_info)
 
         return addresses
 
