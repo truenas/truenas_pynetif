@@ -65,6 +65,25 @@ class AddressInfo:
         default=None, compare=False, hash=False
     )  # seconds, None=forever
 
+    def asdict(self, stats: bool = False) -> dict:
+        """Convert to dict format compatible with InterfaceAddress.asdict()."""
+        if self.family == AddressFamily.INET:
+            af_name = "INET"
+        elif self.family == AddressFamily.INET6:
+            af_name = "INET6"
+        else:
+            af_name = "LINK"
+
+        result = {
+            "type": af_name,
+            "address": self.address,
+        }
+        if self.prefixlen:
+            result["netmask"] = self.prefixlen
+        if self.broadcast:
+            result["broadcast"] = self.broadcast
+        return result
+
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class LinkInfo:
