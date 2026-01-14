@@ -53,6 +53,7 @@ class AddressInfo:
     flags: int = field(default=0, compare=False, hash=False)
     scope: int = field(default=0, compare=False, hash=False)
     index: int = field(default=0, compare=False, hash=False)
+    ifname: str | None = field(default=None, compare=False, hash=False)
     local: str | None = field(default=None, compare=False, hash=False)
     label: str | None = field(default=None, compare=False, hash=False)
 
@@ -257,7 +258,18 @@ class AddressNetlink:
 
         raise DeviceNotFound(f"No such device: {name}")
 
-    def _parse_address_payload(self, payload: bytes) -> AddressInfo | None:
+    def _resolve_ifname(self, index: int, cache: dict[int, str | None]) -> str | None:
+        """Resolve interface index to name, using cache to avoid repeated syscalls."""
+        if index not in cache:
+            try:
+                cache[index] = socket.if_indextoname(index)
+            except OSError:
+                cache[index] = None
+        return cache[index]
+
+    def _parse_address_payload(
+        self, payload: bytes, ifname_cache: dict[int, str | None] | None = None
+    ) -> AddressInfo | None:
         """Parse a NEWADDR payload into AddressInfo. Returns None if invalid."""
         if len(payload) < 8:
             return None
@@ -281,15 +293,17 @@ class AddressNetlink:
         local = None
         broadcast = None
         label = None
+        ifname = None
 
         if IFAAttr.LOCAL in attrs:
             local = self._format_address(ifa_family, attrs[IFAAttr.LOCAL])
         if IFAAttr.BROADCAST in attrs:
             broadcast = self._format_address(ifa_family, attrs[IFAAttr.BROADCAST])
         if IFAAttr.LABEL in attrs:
-            label = (
-                attrs[IFAAttr.LABEL].rstrip(b"\x00").decode("utf-8", errors="replace")
-            )
+            label = attrs[IFAAttr.LABEL].rstrip(b"\x00").decode("utf-8", errors="replace")
+
+        if ifname_cache is not None:
+            ifname = self._resolve_ifname(ifa_index, ifname_cache)
 
         return AddressInfo(
             family=ifa_family,
@@ -299,6 +313,7 @@ class AddressNetlink:
             flags=ifa_flags,
             scope=ifa_scope,
             index=ifa_index,
+            ifname=ifname,
             local=local,
             label=label,
         )
@@ -313,10 +328,11 @@ class AddressNetlink:
         self._sock.send(msg)
 
         addresses: list[AddressInfo] = []
+        ifname_cache: dict[int, str | None] = {}
         for msg_type, payload in self._recv_msgs():
             if msg_type != RTMType.NEWADDR:
                 continue
-            if addr_info := self._parse_address_payload(payload):
+            if addr_info := self._parse_address_payload(payload, ifname_cache):
                 addresses.append(addr_info)
 
         return addresses
@@ -338,11 +354,13 @@ class AddressNetlink:
         )
         self._sock.send(msg)
 
+        # Pre-populate cache with the known name for this index
+        ifname_cache: dict[int, str | None] = {index: name}
         addresses: list[AddressInfo] = []
         for msg_type, payload in self._recv_msgs():
             if msg_type != RTMType.NEWADDR:
                 continue
-            if addr_info := self._parse_address_payload(payload):
+            if addr_info := self._parse_address_payload(payload, ifname_cache):
                 addresses.append(addr_info)
 
         return addresses
