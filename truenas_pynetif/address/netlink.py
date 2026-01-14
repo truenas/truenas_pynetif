@@ -182,9 +182,7 @@ class AddressNetlink:
         ifname = None
         if IFLAAttr.IFNAME in attrs:
             ifname = (
-                attrs[IFLAAttr.IFNAME]
-                .rstrip(b"\x00")
-                .decode("utf-8", errors="replace")
+                attrs[IFLAAttr.IFNAME].rstrip(b"\x00").decode("utf-8", errors="replace")
             )
         if not ifname:
             return None
@@ -265,8 +263,8 @@ class AddressNetlink:
             return None
 
         # Parse ifaddrmsg header
-        ifa_family, ifa_prefixlen, ifa_flags, ifa_scope, ifa_index = (
-            struct.unpack_from("BBBBI", payload, 0)
+        ifa_family, ifa_prefixlen, ifa_flags, ifa_scope, ifa_index = struct.unpack_from(
+            "BBBBI", payload, 0
         )
         # Parse attributes after ifaddrmsg (8 bytes)
         attrs = self._parse_attrs(payload, 8)
@@ -290,9 +288,7 @@ class AddressNetlink:
             broadcast = self._format_address(ifa_family, attrs[IFAAttr.BROADCAST])
         if IFAAttr.LABEL in attrs:
             label = (
-                attrs[IFAAttr.LABEL]
-                .rstrip(b"\x00")
-                .decode("utf-8", errors="replace")
+                attrs[IFAAttr.LABEL].rstrip(b"\x00").decode("utf-8", errors="replace")
             )
 
         return AddressInfo(
