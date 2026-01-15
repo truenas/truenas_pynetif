@@ -483,24 +483,27 @@ class AddressNetlink:
 
         # Enable strict checking so kernel filters by interface index
         self._sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 1)
+        try:
+            # Build ifaddrmsg with specific index - kernel will filter with strict check enabled
+            ifaddrmsg = struct.pack("BBBBI", AddressFamily.UNSPEC, 0, 0, 0, index)
+            msg = self._pack_nlmsg(
+                RTMType.GETADDR, NLMsgFlags.REQUEST | NLMsgFlags.DUMP, ifaddrmsg
+            )
+            self._sock.send(msg)
 
-        # Build ifaddrmsg with specific index - kernel will filter with strict check enabled
-        ifaddrmsg = struct.pack("BBBBI", AddressFamily.UNSPEC, 0, 0, 0, index)
-        msg = self._pack_nlmsg(
-            RTMType.GETADDR, NLMsgFlags.REQUEST | NLMsgFlags.DUMP, ifaddrmsg
-        )
-        self._sock.send(msg)
+            # Pre-populate cache with the known name for this index
+            ifname_cache: dict[int, str | None] = {index: name}
+            addresses: list[AddressInfo] = []
+            for msg_type, payload in self._recv_msgs():
+                if msg_type != RTMType.NEWADDR:
+                    continue
+                if addr_info := self._parse_address_payload(payload, ifname_cache):
+                    addresses.append(addr_info)
 
-        # Pre-populate cache with the known name for this index
-        ifname_cache: dict[int, str | None] = {index: name}
-        addresses: list[AddressInfo] = []
-        for msg_type, payload in self._recv_msgs():
-            if msg_type != RTMType.NEWADDR:
-                continue
-            if addr_info := self._parse_address_payload(payload, ifname_cache):
-                addresses.append(addr_info)
-
-        return addresses
+            return addresses
+        finally:
+            # Reset strict checking so subsequent calls work normally
+            self._sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 0)
 
     def _format_address(self, family: int, data: bytes) -> str | None:
         if family == AddressFamily.INET and len(data) >= 4:
