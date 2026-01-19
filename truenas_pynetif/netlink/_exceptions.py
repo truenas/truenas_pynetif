@@ -1,6 +1,3 @@
-"""Netlink-specific exceptions."""
-
-
 class NetlinkError(Exception):
     pass
 
