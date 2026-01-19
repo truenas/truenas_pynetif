@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from types import MappingProxyType
 
-from .constants import (
+from truenas_pynetif.ethtool.constants import (
     GENL_ID_CTRL,
     NETLINK_GENERIC,
     NLA_F_NESTED,
@@ -30,7 +30,7 @@ from .constants import (
     NLMsgFlags,
     NLMsgType,
 )
-from ..exceptions import DeviceNotFound, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
 
 _link_mode_names: MappingProxyType[int, str] | None = None
 _feature_names: MappingProxyType[int, str] | None = None

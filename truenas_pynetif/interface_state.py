@@ -1,15 +1,17 @@
 from dataclasses import dataclass
 
-from .address.constants import AddressFamily, IFOperState
-from .address.netlink import (
+from truenas_pynetif.address.constants import AddressFamily, IFOperState
+from truenas_pynetif.address.netlink import (
     AddressInfo,
-    DumpInterrupted,
     LinkInfo,
-    get_address_netlink,
+    get_addresses,
+    get_links,
+    netlink_route,
 )
-from .bits import InterfaceFlags
-from .ethernet_settings import EthernetHardwareSettings
-from .utils import INTERNAL_INTERFACES
+from truenas_pynetif.bits import InterfaceFlags
+from truenas_pynetif.ethernet_settings import EthernetHardwareSettings
+from truenas_pynetif.netlink import DumpInterrupted
+from truenas_pynetif.utils import INTERNAL_INTERFACES
 
 __all__ = (
     "InterfaceState",
@@ -229,13 +231,12 @@ def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState]:
     """
     for attempt in range(1, max_retries + 1):
         try:
-            nl = get_address_netlink()
+            with netlink_route() as sock:
+                # Get all links
+                links = get_links(sock)
 
-            # Get all links
-            links = nl.get_links()
-
-            # Get all addresses with interface names
-            all_addresses = nl.get_addresses()
+                # Get all addresses with interface names
+                all_addresses = get_addresses(sock)
 
             # Group addresses by interface name
             addresses_by_name: dict[str, list[AddressInfo]] = {}

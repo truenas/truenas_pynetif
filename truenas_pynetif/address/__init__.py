@@ -1,3 +1,35 @@
-from .mixin import *  # noqa
-from .netlink import *  # noqa
-from .types import *  # noqa
+from truenas_pynetif.address.mixin import AddressMixin
+from truenas_pynetif.address.netlink import (
+    AddressInfo,
+    DeviceNotFound,
+    IFOperState,
+    LinkInfo,
+    RouteInfo,
+    get_addresses,
+    get_link,
+    get_link_addresses,
+    get_link_routes,
+    get_links,
+    get_routes,
+    netlink_route,
+)
+from truenas_pynetif.address.types import AddressFamily, InterfaceAddress, LinkAddress
+
+__all__ = [
+    "AddressFamily",
+    "AddressInfo",
+    "AddressMixin",
+    "DeviceNotFound",
+    "IFOperState",
+    "InterfaceAddress",
+    "LinkAddress",
+    "LinkInfo",
+    "RouteInfo",
+    "get_addresses",
+    "get_link",
+    "get_link_addresses",
+    "get_link_routes",
+    "get_links",
+    "get_routes",
+    "netlink_route",
+]

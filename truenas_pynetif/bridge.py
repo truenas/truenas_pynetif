@@ -2,7 +2,7 @@ import json
 import logging
 from pyroute2 import NDB
 
-from .utils import run
+from truenas_pynetif.utils import run
 
 logger = logging.getLogger(__name__)
 

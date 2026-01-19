@@ -1,16 +1,16 @@
 import logging
 from pyroute2 import IPRoute, NetlinkDumpInterrupted
 
-from .address.netlink import get_address_netlink
-from .bridge import create_bridge
-from .interface import Interface, CLONED_PREFIXES
-from .lagg import AggregationProtocol, create_lagg
-from .utils import run
-from .vlan import create_vlan
+from truenas_pynetif.address.netlink import netlink_route
+from truenas_pynetif.bridge import create_bridge
+from truenas_pynetif.interface import Interface, CLONED_PREFIXES
+from truenas_pynetif.lagg import AggregationProtocol, create_lagg
+from truenas_pynetif.utils import run
+from truenas_pynetif.vlan import create_vlan
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["AggregationProtocol", "create_vlan", "create_interface", "destroy_interface", "get_address_netlink",
+__all__ = ["AggregationProtocol", "create_vlan", "create_interface", "destroy_interface", "netlink_route",
            "get_interface", "list_interfaces", "CLONED_PREFIXES"]
 
 

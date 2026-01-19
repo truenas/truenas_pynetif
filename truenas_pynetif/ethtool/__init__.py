@@ -1,4 +1,4 @@
-from .netlink import (
+from truenas_pynetif.ethtool.netlink import (
     DeviceNotFound,
     Duplex,
     EthtoolNetlink,
