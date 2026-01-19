@@ -14,8 +14,14 @@ from .constants import (
     NLAttrFlags,
     NLMsgFlags,
     NLMsgType,
+    RTAAttr,
     RTEXTFilter,
+    RTMFlags,
     RTMType,
+    RTNType,
+    RTProtocol,
+    RTScope,
+    RTTable,
 )
 from ..exceptions import (
     DeviceNotFound,
@@ -33,6 +39,7 @@ __all__ = (
     "LinkInfo",
     "NetlinkError",
     "OperationNotSupported",
+    "RouteInfo",
     "close_address_netlink",
     "get_address_netlink",
 )
@@ -108,6 +115,25 @@ class LinkInfo:
     parentdev: str | None = None
     # Alternate names
     altnames: tuple[str, ...] = ()
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class RouteInfo:
+    """Routing table entry information."""
+
+    family: int
+    dst_len: int
+    table: int
+    protocol: int
+    scope: int
+    route_type: int
+    flags: int
+    dst: str | None = None
+    gateway: str | None = None
+    prefsrc: str | None = None
+    oif: int | None = None
+    oif_name: str | None = None
+    priority: int | None = None
 
 
 @dataclass(slots=True)
@@ -511,6 +537,182 @@ class AddressNetlink:
         elif family == AddressFamily.INET6 and len(data) >= 16:
             return socket.inet_ntop(socket.AF_INET6, data[:16])
         return None
+
+    def _parse_route_payload(
+        self, payload: bytes, ifname_cache: dict[int, str | None] | None = None
+    ) -> RouteInfo | None:
+        """Parse a NEWROUTE payload into RouteInfo. Returns None if invalid."""
+        if len(payload) < 12:
+            return None
+
+        # Parse rtmsg header (12 bytes)
+        (
+            rtm_family,
+            rtm_dst_len,
+            rtm_src_len,
+            rtm_tos,
+            rtm_table,
+            rtm_protocol,
+            rtm_scope,
+            rtm_type,
+            rtm_flags,
+        ) = struct.unpack_from("BBBBBBBBI", payload, 0)
+
+        # Skip cloned routes
+        if rtm_flags & RTMFlags.CLONED:
+            return None
+
+        # Parse attributes after rtmsg (12 bytes)
+        attrs = self._parse_attrs(payload, 12)
+
+        dst = None
+        gateway = None
+        prefsrc = None
+        oif = None
+        oif_name = None
+        priority = None
+        table = rtm_table
+
+        if RTAAttr.DST in attrs:
+            dst = self._format_address(rtm_family, attrs[RTAAttr.DST])
+        if RTAAttr.GATEWAY in attrs:
+            gateway = self._format_address(rtm_family, attrs[RTAAttr.GATEWAY])
+        if RTAAttr.PREFSRC in attrs:
+            prefsrc = self._format_address(rtm_family, attrs[RTAAttr.PREFSRC])
+        if RTAAttr.OIF in attrs and len(attrs[RTAAttr.OIF]) >= 4:
+            oif = struct.unpack("I", attrs[RTAAttr.OIF][:4])[0]
+            if ifname_cache is not None:
+                oif_name = self._resolve_ifname(oif, ifname_cache)
+        if RTAAttr.PRIORITY in attrs and len(attrs[RTAAttr.PRIORITY]) >= 4:
+            priority = struct.unpack("I", attrs[RTAAttr.PRIORITY][:4])[0]
+        if RTAAttr.TABLE in attrs and len(attrs[RTAAttr.TABLE]) >= 4:
+            table = struct.unpack("I", attrs[RTAAttr.TABLE][:4])[0]
+
+        return RouteInfo(
+            family=rtm_family,
+            dst_len=rtm_dst_len,
+            table=table,
+            protocol=rtm_protocol,
+            scope=rtm_scope,
+            route_type=rtm_type,
+            flags=rtm_flags,
+            dst=dst,
+            gateway=gateway,
+            prefsrc=prefsrc,
+            oif=oif,
+            oif_name=oif_name,
+            priority=priority,
+        )
+
+    def get_routes(
+        self,
+        family: int = AddressFamily.UNSPEC,
+        table: int = RTTable.MAIN,
+    ) -> list[RouteInfo]:
+        """Get routing table entries.
+
+        Args:
+            family: Address family (UNSPEC=all, INET=IPv4, INET6=IPv6)
+            table: Routing table ID (default: MAIN=254)
+
+        Returns:
+            List of RouteInfo objects
+        """
+        # Build rtmsg header (12 bytes):
+        # family, dst_len, src_len, tos, table, protocol, scope, type, flags
+        rtmsg = struct.pack(
+            "BBBBBBBBI",
+            family,  # rtm_family
+            0,  # rtm_dst_len
+            0,  # rtm_src_len
+            0,  # rtm_tos
+            RTTable.UNSPEC,  # rtm_table (use UNSPEC, filter via attribute)
+            RTProtocol.UNSPEC,  # rtm_protocol
+            RTScope.UNIVERSE,  # rtm_scope
+            RTNType.UNSPEC,  # rtm_type
+            0,  # rtm_flags
+        )
+
+        # Add RTA_TABLE attribute to filter by table
+        table_attr = self._pack_nlattr_u32(RTAAttr.TABLE, table)
+        payload = rtmsg + table_attr
+
+        msg = self._pack_nlmsg(
+            RTMType.GETROUTE, NLMsgFlags.REQUEST | NLMsgFlags.DUMP, payload
+        )
+        self._sock.send(msg)
+
+        routes: list[RouteInfo] = []
+        ifname_cache: dict[int, str | None] = {}
+        for msg_type, payload in self._recv_msgs():
+            if msg_type != RTMType.NEWROUTE:
+                continue
+            if route_info := self._parse_route_payload(payload, ifname_cache):
+                routes.append(route_info)
+
+        return routes
+
+    def get_link_routes(
+        self,
+        name: str,
+        family: int = AddressFamily.UNSPEC,
+        table: int = RTTable.MAIN,
+    ) -> list[RouteInfo]:
+        """Get routes for a single interface by name.
+
+        Args:
+            name: Interface name (e.g., "eth0", "vlan1")
+            family: Address family (UNSPEC=all, INET=IPv4, INET6=IPv6)
+            table: Routing table ID (default: MAIN=254)
+
+        Returns:
+            List of RouteInfo objects for the specified interface
+        """
+        try:
+            index = socket.if_nametoindex(name)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {name}")
+
+        # Enable strict checking so kernel filters by interface index
+        self._sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 1)
+        try:
+            # Build rtmsg header (12 bytes)
+            rtmsg = struct.pack(
+                "BBBBBBBBI",
+                family,  # rtm_family
+                0,  # rtm_dst_len
+                0,  # rtm_src_len
+                0,  # rtm_tos
+                RTTable.UNSPEC,  # rtm_table (use UNSPEC, filter via attribute)
+                RTProtocol.UNSPEC,  # rtm_protocol
+                RTScope.UNIVERSE,  # rtm_scope
+                RTNType.UNSPEC,  # rtm_type
+                0,  # rtm_flags
+            )
+
+            # Add RTA_TABLE and RTA_OIF attributes
+            table_attr = self._pack_nlattr_u32(RTAAttr.TABLE, table)
+            oif_attr = self._pack_nlattr_u32(RTAAttr.OIF, index)
+            payload = rtmsg + table_attr + oif_attr
+
+            msg = self._pack_nlmsg(
+                RTMType.GETROUTE, NLMsgFlags.REQUEST | NLMsgFlags.DUMP, payload
+            )
+            self._sock.send(msg)
+
+            # Pre-populate cache with the known name for this index
+            ifname_cache: dict[int, str | None] = {index: name}
+            routes: list[RouteInfo] = []
+            for msg_type, payload in self._recv_msgs():
+                if msg_type != RTMType.NEWROUTE:
+                    continue
+                if route_info := self._parse_route_payload(payload, ifname_cache):
+                    routes.append(route_info)
+
+            return routes
+        finally:
+            # Reset strict checking so subsequent calls work normally
+            self._sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 0)
 
 
 def get_address_netlink() -> AddressNetlink:

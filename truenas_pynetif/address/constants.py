@@ -40,6 +40,9 @@ class RTMType(IntEnum):
     NEWADDR = 20
     DELADDR = 21
     GETADDR = 22
+    NEWROUTE = 24
+    DELROUTE = 25
+    GETROUTE = 26
 
 
 class AddressFamily(IntEnum):
@@ -190,3 +193,102 @@ class RTEXTFilter(IntFlag):
     CFM_CONFIG = 1 << 5
     CFM_STATUS = 1 << 6
     MST = 1 << 7
+
+
+class RTAAttr(IntEnum):
+    """Route attributes (RTA_*)"""
+    UNSPEC = 0
+    DST = 1
+    SRC = 2
+    IIF = 3
+    OIF = 4
+    GATEWAY = 5
+    PRIORITY = 6
+    PREFSRC = 7
+    METRICS = 8
+    MULTIPATH = 9
+    PROTOINFO = 10
+    FLOW = 11
+    CACHEINFO = 12
+    SESSION = 13
+    MP_ALGO = 14
+    TABLE = 15
+    MARK = 16
+    MFC_STATS = 17
+    VIA = 18
+    NEWDST = 19
+    PREF = 20
+    ENCAP_TYPE = 21
+    ENCAP = 22
+    EXPIRES = 23
+    PAD = 24
+    UID = 25
+    TTL_PROPAGATE = 26
+    IP_PROTO = 27
+    SPORT = 28
+    DPORT = 29
+    NH_ID = 30
+
+
+class RTTable(IntEnum):
+    """Routing table IDs"""
+    UNSPEC = 0
+    COMPAT = 252
+    DEFAULT = 253
+    MAIN = 254
+    LOCAL = 255
+
+
+class RTProtocol(IntEnum):
+    """Route origin (how route was learned)"""
+    UNSPEC = 0
+    REDIRECT = 1
+    KERNEL = 2
+    BOOT = 3
+    STATIC = 4
+    GATED = 8
+    RA = 9
+    MRT = 10
+    ZEBRA = 11
+    BIRD = 12
+    DNROUTED = 13
+    XORP = 14
+    NTK = 15
+    DHCP = 16
+    MROUTED = 17
+    KEEPALIVED = 18
+    BABEL = 42
+    BGP = 186
+    ISIS = 187
+    OSPF = 188
+    RIP = 189
+    EIGRP = 192
+
+
+class RTNType(IntEnum):
+    """Route types"""
+    UNSPEC = 0
+    UNICAST = 1
+    LOCAL = 2
+    BROADCAST = 3
+    ANYCAST = 4
+    MULTICAST = 5
+    BLACKHOLE = 6
+    UNREACHABLE = 7
+    PROHIBIT = 8
+    THROW = 9
+    NAT = 10
+    XRESOLVE = 11
+
+
+class RTMFlags(IntFlag):
+    """Route message flags"""
+    NOTIFY = 0x100
+    CLONED = 0x200
+    EQUALIZE = 0x400
+    PREFIX = 0x800
+    LOOKUP_TABLE = 0x1000
+    FIB_MATCH = 0x2000
+    OFFLOAD = 0x4000
+    TRAP = 0x8000
+    OFFLOAD_FAILED = 0x20000000
