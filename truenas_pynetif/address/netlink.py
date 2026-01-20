@@ -41,6 +41,7 @@ __all__ = (
     "get_link_routes",
     "get_links",
     "get_routes",
+    "link_exists",
     "netlink_route",
 )
 
@@ -158,6 +159,15 @@ def _parse_link_payload(payload: bytes) -> tuple[str, LinkInfo] | None:
         parentdev=parentdev,
         altnames=tuple(altnames),
     )
+
+
+def link_exists(name: str) -> bool:
+    """Check if a network interface exists (fast syscall, no netlink)."""
+    try:
+        socket.if_nametoindex(name)
+        return True
+    except OSError:
+        return False
 
 
 def get_links(sock: socket.socket) -> dict[str, LinkInfo]:

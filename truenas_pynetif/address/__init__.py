@@ -11,6 +11,7 @@ from truenas_pynetif.address.netlink import (
     get_link_routes,
     get_links,
     get_routes,
+    link_exists,
     netlink_route,
 )
 from truenas_pynetif.address.types import AddressFamily, InterfaceAddress, LinkAddress
@@ -31,5 +32,6 @@ __all__ = [
     "get_link_routes",
     "get_links",
     "get_routes",
+    "link_exists",
     "netlink_route",
 ]
