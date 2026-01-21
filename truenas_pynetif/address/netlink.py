@@ -491,3 +491,24 @@ def get_link_routes(
         return routes
     finally:
         sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 0)
+
+
+def get_default_route(
+    sock: socket.socket,
+    family: int = AddressFamily.INET,
+    table: int = RTTable.MAIN,
+) -> RouteInfo | None:
+    """Get the default route for a given address family.
+
+    Args:
+        sock: Netlink socket from netlink_route() context manager
+        family: Address family (INET=IPv4, INET6=IPv6)
+        table: Routing table ID (default: MAIN=254)
+
+    Returns:
+        RouteInfo for the default route, or None if not found
+    """
+    for route in get_routes(sock, family=family, table=table):
+        if route.dst is None and route.dst_len == 0:
+            return route
+    return None
