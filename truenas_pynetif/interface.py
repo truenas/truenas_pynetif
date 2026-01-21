@@ -1,13 +1,13 @@
 from pyroute2 import NDB
 
-from .address import AddressMixin
-from .bridge import BridgeMixin
-from .bits import InterfaceFlags, InterfaceV6Flags
-from .lagg import LaggMixin
-from .utils import bitmask_to_set, INTERNAL_INTERFACES
-from .vlan import VlanMixin
-from .vrrp import VrrpMixin
-from .ethernet_settings import EthernetHardwareSettings
+from truenas_pynetif.address import AddressMixin
+from truenas_pynetif.bridge import BridgeMixin
+from truenas_pynetif.bits import InterfaceFlags, InterfaceV6Flags
+from truenas_pynetif.lagg import LaggMixin
+from truenas_pynetif.utils import bitmask_to_set, INTERNAL_INTERFACES
+from truenas_pynetif.vlan import VlanMixin
+from truenas_pynetif.vrrp import VrrpMixin
+from truenas_pynetif.ethernet_settings import EthernetHardwareSettings
 
 __all__ = ["Interface", "CLONED_PREFIXES"]
 

@@ -1,8 +1,8 @@
 import subprocess
 from logging import getLogger
 
-from .ethtool import DeviceNotFound, OperationNotSupported, get_ethtool
-from .utils import run
+from truenas_pynetif.ethtool import DeviceNotFound, OperationNotSupported, get_ethtool
+from truenas_pynetif.utils import run
 
 
 logger = getLogger(__name__)

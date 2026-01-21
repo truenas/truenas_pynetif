@@ -1,9 +1,10 @@
 import socket
 import time
 
-from .constants import AddressFamily
-from .netlink import AddressInfo, DumpInterrupted, get_address_netlink
-from ..utils import run
+from truenas_pynetif.address.constants import AddressFamily
+from truenas_pynetif.address.netlink import AddressInfo, get_addresses, netlink_route
+from truenas_pynetif.netlink import DumpInterrupted
+from truenas_pynetif.utils import run
 
 __all__ = ("AddressMixin",)
 
@@ -46,12 +47,15 @@ class AddressMixin:
         except OSError:
             return []
 
-        return [
-            addr
-            for addr in get_address_netlink().get_addresses()
-            if addr.index == if_index
-            and addr.family in (AddressFamily.INET, AddressFamily.INET6)
-        ]
+        all_addresses = list()
+        with netlink_route() as sock:
+            for addr in get_addresses(sock):
+                if addr.index != if_index:
+                    continue
+                if addr.family not in (AddressFamily.INET, AddressFamily.INET6):
+                    continue
+                all_addresses.append(addr)
+        return all_addresses
 
     @property
     def addresses(self) -> list[AddressInfo]:

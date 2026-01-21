@@ -8,8 +8,8 @@ import socket
 from pyroute2 import IPRoute
 from pyroute2.netlink.exceptions import NetlinkDumpInterrupted
 
-from .address.ipv6 import ipv6_netmask_to_prefixlen
-from .address.types import AddressFamily
+from truenas_pynetif.address.ipv6 import ipv6_netmask_to_prefixlen
+from truenas_pynetif.address.types import AddressFamily
 
 logger = logging.getLogger(__name__)
 
