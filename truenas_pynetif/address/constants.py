@@ -49,7 +49,7 @@ class AddressFamily(IntEnum):
     UNSPEC = 0
     INET = 2
     INET6 = 10
-    PACKET = 17
+    LINK = 17  # AF_PACKET on Linux
 
 
 class IFLAAttr(IntEnum):
