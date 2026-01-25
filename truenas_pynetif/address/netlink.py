@@ -4,6 +4,7 @@ import struct
 from truenas_pynetif.address.constants import (
     AddressFamily,
     IFAAttr,
+    IFFlags,
     IFLAAttr,
     IFOperState,
     RTAAttr,
@@ -43,6 +44,8 @@ __all__ = (
     "get_routes",
     "link_exists",
     "netlink_route",
+    "set_link_down",
+    "set_link_up",
 )
 
 
@@ -210,6 +213,35 @@ def get_link(sock: socket.socket, name: str) -> LinkInfo:
             return result[1]
 
     raise DeviceNotFound(f"No such device: {name}")
+
+
+def set_link_up(sock: socket.socket, name: str | None = None, *, index: int | None = None) -> None:
+    """Bring a network interface up."""
+    _set_link_flags(sock, IFFlags.UP, IFFlags.UP, name=name, index=index)
+
+
+def set_link_down(sock: socket.socket, name: str | None = None, *, index: int | None = None) -> None:
+    """Bring a network interface down."""
+    _set_link_flags(sock, 0, IFFlags.UP, name=name, index=index)
+
+
+def _set_link_flags(
+    sock: socket.socket, flags: int, change: int, *, name: str | None = None, index: int | None = None
+) -> None:
+    """Set interface flags via RTM_NEWLINK."""
+    if index is None:
+        if name is None:
+            raise ValueError("Either name or index must be provided")
+        try:
+            index = socket.if_nametoindex(name)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {name}")
+
+    # ifinfomsg: family(1) + pad(1) + type(2) + index(4) + flags(4) + change(4)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, flags, change)
+    msg = pack_nlmsg(RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg)
+    sock.send(msg)
+    recv_msgs(sock)  # Consume ACK/error
 
 
 def _parse_address_payload(
