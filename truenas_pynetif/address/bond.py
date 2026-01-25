@@ -1,0 +1,164 @@
+"""Bond interface creation and management."""
+
+import socket
+import struct
+
+from truenas_pynetif.address._link_helpers import _create_link
+from truenas_pynetif.address.constants import (
+    AddressFamily,
+    BondLacpRate,
+    BondMode,
+    BondXmitHashPolicy,
+    IFLAAttr,
+    IFLABondAttr,
+    IFLAInfoAttr,
+    RTMType,
+)
+from truenas_pynetif.netlink import DeviceNotFound
+from truenas_pynetif.netlink._core import (
+    NLMsgFlags,
+    pack_nlattr_nested,
+    pack_nlattr_str,
+    pack_nlattr_u8,
+    pack_nlattr_u32,
+    pack_nlmsg,
+    recv_msgs,
+)
+
+__all__ = (
+    "create_bond",
+    "bond_add_member",
+    "BondMode",
+    "BondLacpRate",
+    "BondXmitHashPolicy",
+)
+
+
+def create_bond(
+    sock: socket.socket,
+    name: str,
+    mode: BondMode | None = None,
+    members: list[str] | None = None,
+    *,
+    members_index: list[int] | None = None,
+    xmit_hash_policy: BondXmitHashPolicy | None = None,
+    lacpdu_rate: BondLacpRate | None = None,
+    miimon: int | None = None,
+    primary: str | None = None,
+    primary_index: int | None = None,
+) -> None:
+    """Create a bond interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Name for the new bond interface
+        mode: Bond mode (default: BALANCE_RR). Options include:
+            - BondMode.BALANCE_RR (0): Round-robin
+            - BondMode.ACTIVE_BACKUP (1): Failover
+            - BondMode.BALANCE_XOR (2): XOR
+            - BondMode.BROADCAST (3): Broadcast
+            - BondMode.LACP (4): 802.3ad
+            - BondMode.BALANCE_TLB (5): Adaptive transmit load balancing
+            - BondMode.BALANCE_ALB (6): Adaptive load balancing
+        members: List of interface names to add as bond members (mutually exclusive with members_index)
+        members_index: List of interface indexes to add as bond members (mutually exclusive with members)
+        xmit_hash_policy: Transmit hash policy for BALANCE_XOR and LACP modes
+        lacpdu_rate: LACPDU packet rate for LACP mode (SLOW=every 30s, FAST=every 1s)
+        miimon: MII link monitoring interval in milliseconds
+        primary: Primary interface name for ACTIVE_BACKUP mode (mutually exclusive with primary_index)
+        primary_index: Primary interface index for ACTIVE_BACKUP mode (mutually exclusive with primary)
+    """
+    if members and members_index:
+        raise ValueError("members and members_index are mutually exclusive")
+    if primary and primary_index:
+        raise ValueError("primary and primary_index are mutually exclusive")
+
+    info_data = b""
+    if mode is not None:
+        info_data += pack_nlattr_u8(IFLABondAttr.MODE, mode)
+    if xmit_hash_policy is not None:
+        info_data += pack_nlattr_u8(IFLABondAttr.XMIT_HASH_POLICY, xmit_hash_policy)
+    if lacpdu_rate is not None:
+        info_data += pack_nlattr_u8(IFLABondAttr.AD_LACP_RATE, lacpdu_rate)
+    if miimon is not None:
+        info_data += pack_nlattr_u32(IFLABondAttr.MIIMON, miimon)
+
+    _create_link(sock, name, "bond", info_data=info_data)
+
+    # Add members after bond is created
+    if members or members_index:
+        bond_index = socket.if_nametoindex(name)
+        if members:
+            for member in members:
+                bond_add_member(sock, member, master_index=bond_index)
+        else:
+            for idx in members_index:
+                bond_add_member(sock, index=idx, master_index=bond_index)
+
+    # Set primary after members are added
+    if primary or primary_index:
+        if primary_index is None:
+            try:
+                primary_index = socket.if_nametoindex(primary)
+            except OSError:
+                raise DeviceNotFound(f"No such device: {primary}")
+        _set_bond_primary(sock, name, primary_index)
+
+
+def _set_bond_primary(sock: socket.socket, bond_name: str, primary_index: int) -> None:
+    """Set the primary interface for a bond."""
+    bond_index = socket.if_nametoindex(bond_name)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, bond_index, 0, 0)
+
+    info_data = pack_nlattr_u32(IFLABondAttr.PRIMARY, primary_index)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bond")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def bond_add_member(
+    sock: socket.socket,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+    master: str | None = None,
+    master_index: int | None = None,
+) -> None:
+    """Add an interface as a member of a bond.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Name of interface to add (mutually exclusive with index)
+        index: Index of interface to add (mutually exclusive with name)
+        master: Name of the bond interface (mutually exclusive with master_index)
+        master_index: Index of the bond interface (mutually exclusive with master)
+    """
+    if index is None:
+        if name is None:
+            raise ValueError("Either name or index must be provided")
+        try:
+            index = socket.if_nametoindex(name)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {name}")
+
+    if master_index is None:
+        if master is None:
+            raise ValueError("Either master or master_index must be provided")
+        try:
+            master_index = socket.if_nametoindex(master)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {master}")
+
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+    attrs = pack_nlattr_u32(IFLAAttr.MASTER, master_index)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
