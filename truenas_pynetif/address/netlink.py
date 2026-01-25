@@ -6,6 +6,8 @@ from truenas_pynetif.address.constants import (
     IFAAttr,
     IFFlags,
     IFLAAttr,
+    IFLAInfoAttr,
+    IFLAVlanAttr,
     IFOperState,
     RTAAttr,
     RTEXTFilter,
@@ -22,6 +24,9 @@ from truenas_pynetif.netlink._core import (
     NetlinkSockOpt,
     NLMsgFlags,
     netlink_route,
+    pack_nlattr_nested,
+    pack_nlattr_str,
+    pack_nlattr_u16,
     pack_nlattr_u32,
     pack_nlmsg,
     parse_attrs,
@@ -36,6 +41,11 @@ __all__ = (
     "IFOperState",
     "LinkInfo",
     "RouteInfo",
+    "create_bond",
+    "create_bridge",
+    "create_dummy",
+    "create_vlan",
+    "delete_link",
     "get_addresses",
     "get_link",
     "get_link_addresses",
@@ -44,7 +54,6 @@ __all__ = (
     "get_routes",
     "link_exists",
     "netlink_route",
-    "delete_link",
     "set_link_down",
     "set_link_up",
 )
@@ -238,6 +247,73 @@ def delete_link(sock: socket.socket, name: str | None = None, *, index: int | No
 
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     msg = pack_nlmsg(RTMType.DELLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg)
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def create_dummy(sock: socket.socket, name: str) -> None:
+    """Create a dummy interface."""
+    _create_link(sock, name, "dummy")
+
+
+def create_bridge(sock: socket.socket, name: str) -> None:
+    """Create a bridge interface."""
+    _create_link(sock, name, "bridge")
+
+
+def create_bond(sock: socket.socket, name: str) -> None:
+    """Create a bond interface."""
+    _create_link(sock, name, "bond")
+
+
+def create_vlan(
+    sock: socket.socket,
+    name: str,
+    vlan_id: int,
+    parent: str | None = None,
+    *,
+    parent_index: int | None = None,
+) -> None:
+    """Create a VLAN interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Name for the new VLAN interface
+        vlan_id: VLAN ID (1-4094)
+        parent: Parent interface name (mutually exclusive with parent_index)
+        parent_index: Parent interface index (mutually exclusive with parent)
+    """
+    if parent_index is None:
+        if parent is None:
+            raise ValueError("Either parent or parent_index must be provided")
+        try:
+            parent_index = socket.if_nametoindex(parent)
+        except OSError:
+            raise DeviceNotFound(f"No such device: {parent}")
+
+    info_data = pack_nlattr_u16(IFLAVlanAttr.ID, vlan_id)
+    extra_attrs = pack_nlattr_u32(IFLAAttr.LINK, parent_index)
+    _create_link(sock, name, "vlan", info_data=info_data, extra_attrs=extra_attrs)
+
+
+def _create_link(
+    sock: socket.socket, name: str, kind: str, *, info_data: bytes = b"", extra_attrs: bytes = b""
+) -> None:
+    """Create a virtual interface via RTM_NEWLINK."""
+    # ifinfomsg: family(1) + pad(1) + type(2) + index(4) + flags(4) + change(4)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, 0, 0, 0)
+
+    # Build IFLA_LINKINFO nested attribute
+    linkinfo_attrs = pack_nlattr_str(IFLAInfoAttr.KIND, kind)
+    if info_data:
+        linkinfo_attrs += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+
+    attrs = pack_nlattr_str(IFLAAttr.IFNAME, name)
+    attrs += extra_attrs
+    attrs += pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo_attrs)
+
+    flags = NLMsgFlags.REQUEST | NLMsgFlags.ACK | NLMsgFlags.EXCL | NLMsgFlags.CREATE
+    msg = pack_nlmsg(RTMType.NEWLINK, flags, ifinfomsg + attrs)
     sock.send(msg)
     recv_msgs(sock)
 

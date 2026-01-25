@@ -33,6 +33,8 @@ class NLMsgFlags:
     REQUEST = 0x01
     MULTI = 0x02
     ACK = 0x04
+    EXCL = 0x200
+    CREATE = 0x400
     ROOT = 0x100
     MATCH = 0x200
     DUMP = ROOT | MATCH
@@ -80,6 +82,11 @@ def pack_nlattr(attr_type: int, data: bytes) -> bytes:
 def pack_nlattr_str(attr_type: int, s: str) -> bytes:
     """Pack a string netlink attribute."""
     return pack_nlattr(attr_type, s.encode() + b"\x00")
+
+
+def pack_nlattr_u16(attr_type: int, val: int) -> bytes:
+    """Pack a u16 netlink attribute."""
+    return pack_nlattr(attr_type, struct.pack("H", val))
 
 
 def pack_nlattr_u32(attr_type: int, val: int) -> bytes:

@@ -113,6 +113,22 @@ class IFLAAttr(IntEnum):
     PARENT_DEV_BUS_NAME = 57
 
 
+class IFLAInfoAttr(IntEnum):
+    """IFLA_LINKINFO nested attributes"""
+    UNSPEC = 0
+    KIND = 1
+    DATA = 2
+    XSTATS = 3
+    SLAVE_KIND = 4
+    SLAVE_DATA = 5
+
+
+class IFLAVlanAttr(IntEnum):
+    """IFLA_INFO_DATA attributes for vlan"""
+    UNSPEC = 0
+    ID = 1
+
+
 class IFAAttr(IntEnum):
     UNSPEC = 0
     ADDRESS = 1
