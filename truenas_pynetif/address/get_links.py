@@ -1,5 +1,3 @@
-"""Link query functions."""
-
 import socket
 import struct
 

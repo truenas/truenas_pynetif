@@ -1,5 +1,3 @@
-"""Route query functions."""
-
 import socket
 import struct
 

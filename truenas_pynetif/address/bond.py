@@ -1,9 +1,7 @@
-"""Bond interface creation and management."""
-
 import socket
 import struct
 
-from truenas_pynetif.address._link_helpers import _create_link
+from truenas_pynetif.address._link_helpers import _create_link, _resolve_index
 from truenas_pynetif.address.constants import (
     AddressFamily,
     BondLacpRate,
@@ -14,7 +12,6 @@ from truenas_pynetif.address.constants import (
     IFLAInfoAttr,
     RTMType,
 )
-from truenas_pynetif.netlink import DeviceNotFound
 from truenas_pynetif.netlink._core import (
     NLMsgFlags,
     pack_nlattr_nested,
@@ -97,11 +94,7 @@ def create_bond(
 
     # Set primary after members are added
     if primary or primary_index:
-        if primary_index is None:
-            try:
-                primary_index = socket.if_nametoindex(primary)
-            except OSError:
-                raise DeviceNotFound(f"No such device: {primary}")
+        primary_index = _resolve_index(primary, primary_index)
         _set_bond_primary(sock, name, primary_index)
 
 
@@ -139,22 +132,8 @@ def bond_add_member(
         master: Name of the bond interface (mutually exclusive with master_index)
         master_index: Index of the bond interface (mutually exclusive with master)
     """
-    if index is None:
-        if name is None:
-            raise ValueError("Either name or index must be provided")
-        try:
-            index = socket.if_nametoindex(name)
-        except OSError:
-            raise DeviceNotFound(f"No such device: {name}")
-
-    if master_index is None:
-        if master is None:
-            raise ValueError("Either master or master_index must be provided")
-        try:
-            master_index = socket.if_nametoindex(master)
-        except OSError:
-            raise DeviceNotFound(f"No such device: {master}")
-
+    index = _resolve_index(name, index)
+    master_index = _resolve_index(master, master_index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MASTER, master_index)
     msg = pack_nlmsg(

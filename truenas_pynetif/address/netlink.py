@@ -1,8 +1,3 @@
-"""Public API for netlink-based network interface operations.
-
-This module re-exports functions from submodules for backwards compatibility.
-"""
-
 from truenas_pynetif.address.bond import (
     BondLacpRate,
     BondMode,

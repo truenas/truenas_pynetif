@@ -1,5 +1,3 @@
-"""IP address query functions."""
-
 import socket
 import struct
 

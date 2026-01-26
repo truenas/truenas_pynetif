@@ -1,5 +1,3 @@
-"""VLAN interface creation."""
-
 import socket
 
 from truenas_pynetif.address._link_helpers import _create_link
