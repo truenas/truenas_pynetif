@@ -12,3 +12,7 @@ class OperationNotSupported(NetlinkError):
 
 class DumpInterrupted(NetlinkError):
     pass
+
+
+class BondHasMembers(NetlinkError):
+    pass
