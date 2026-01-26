@@ -88,7 +88,7 @@ def create_bond(
         if members:
             for member in members:
                 bond_add_member(sock, member, master_index=bond_index)
-        else:
+        elif members_index:
             for idx in members_index:
                 bond_add_member(sock, index=idx, master_index=bond_index)
 

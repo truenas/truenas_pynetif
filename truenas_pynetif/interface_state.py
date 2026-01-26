@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from truenas_pynetif.address.constants import AddressFamily, IFOperState
 from truenas_pynetif.address.netlink import (
@@ -38,7 +39,7 @@ def _flags_to_names(flags: int) -> list[str]:
     return [f.name for f in InterfaceFlags if flags & f]
 
 
-def _address_to_alias_dict(addr: AddressInfo) -> dict:
+def _address_to_alias_dict(addr: AddressInfo) -> dict[str, str | int]:
     """Convert AddressInfo to the alias dict format expected by middleware."""
     if addr.family == AddressFamily.INET:
         af_name = "INET"
@@ -47,7 +48,7 @@ def _address_to_alias_dict(addr: AddressInfo) -> dict:
     else:
         af_name = "LINK"
 
-    result = {
+    result: dict[str, str | int] = {
         "type": af_name,
         "address": addr.address,
         "netmask": addr.prefixlen,
@@ -83,17 +84,19 @@ class InterfaceState:
         return self.link.parentbus
 
     def asdict(
-        self, address_stats: bool = False, vrrp_config: list | None = None
-    ) -> dict:
+        self, address_stats: bool = False, vrrp_config: list[Any] | None = None
+    ) -> dict[str, Any]:
         """
         Build interface state dict compatible with Interface.asdict().
 
         This format is expected by middleware's iface_extend() method.
         """
         link = self.link
-        link_state = _OPERSTATE_TO_LINK_STATE.get(
-            link.operstate, f"LINK_STATE_{link.operstate}"
-        )
+        try:
+            operstate_enum = IFOperState(link.operstate)
+            link_state = _OPERSTATE_TO_LINK_STATE.get(operstate_enum, f"LINK_STATE_{link.operstate}")
+        except ValueError:
+            link_state = f"LINK_STATE_{link.operstate}"
 
         # Build aliases from addresses (only INET and INET6)
         aliases = [
@@ -150,9 +153,9 @@ class InterfaceState:
 
         return state
 
-    def _get_bond_info(self) -> dict:
+    def _get_bond_info(self) -> dict[str, Any]:
         """Get bond/lagg specific info from sysfs."""
-        result = {
+        result: dict[str, Any] = {
             "protocol": None,
             "ports": [],
             "xmit_hash_policy": None,
@@ -196,9 +199,9 @@ class InterfaceState:
 
         return result
 
-    def _get_vlan_info(self) -> dict:
+    def _get_vlan_info(self) -> dict[str, Any]:
         """Get VLAN specific info."""
-        result = {
+        result: dict[str, Any] = {
             "parent": None,
             "tag": None,
             "pcp": None,
@@ -222,7 +225,7 @@ class InterfaceState:
         return result
 
 
-def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState]:
+def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState] | None:
     """
     Get all network interfaces using pure netlink.
 
@@ -261,3 +264,4 @@ def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState]:
             if attempt < max_retries:
                 continue
             raise
+    return None
