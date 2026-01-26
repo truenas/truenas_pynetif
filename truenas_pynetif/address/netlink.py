@@ -15,7 +15,7 @@ from truenas_pynetif.address.get_routes import (
     get_link_routes,
     get_routes,
 )
-from truenas_pynetif.address.link import delete_link, set_link_down, set_link_up
+from truenas_pynetif.address.link import delete_link, set_link_down, set_link_mtu, set_link_up
 from truenas_pynetif.address.vlan import create_vlan
 from truenas_pynetif.netlink import AddressInfo, DeviceNotFound, LinkInfo, RouteInfo
 from truenas_pynetif.netlink._core import netlink_route
@@ -46,5 +46,6 @@ __all__ = (
     "link_exists",
     "netlink_route",
     "set_link_down",
+    "set_link_mtu",
     "set_link_up",
 )
