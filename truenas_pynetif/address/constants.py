@@ -8,12 +8,10 @@ SOL_NETLINK = 270
 
 
 class NetlinkSockOpt(IntEnum):
-    """Netlink socket options for setsockopt(SOL_NETLINK, ...)"""
     GET_STRICT_CHK = 12
 
 
 class NLAttrFlags(IntFlag):
-    """Netlink attribute flags"""
     NESTED = 0x8000
 
 
@@ -115,6 +113,7 @@ class IFLAAttr(IntEnum):
 
 class IFLAInfoAttr(IntEnum):
     """IFLA_LINKINFO nested attributes"""
+
     UNSPEC = 0
     KIND = 1
     DATA = 2
@@ -125,8 +124,66 @@ class IFLAInfoAttr(IntEnum):
 
 class IFLAVlanAttr(IntEnum):
     """IFLA_INFO_DATA attributes for vlan"""
+
     UNSPEC = 0
     ID = 1
+
+
+class IFLABondAttr(IntEnum):
+    """IFLA_INFO_DATA attributes for bond"""
+
+    UNSPEC = 0
+    MODE = 1
+    ACTIVE_SLAVE = 2
+    MIIMON = 3
+    UPDELAY = 4
+    DOWNDELAY = 5
+    USE_CARRIER = 6
+    ARP_INTERVAL = 7
+    ARP_IP_TARGET = 8
+    ARP_VALIDATE = 9
+    ARP_ALL_TARGETS = 10
+    PRIMARY = 11
+    PRIMARY_RESELECT = 12
+    FAIL_OVER_MAC = 13
+    XMIT_HASH_POLICY = 14
+    RESEND_IGMP = 15
+    NUM_PEER_NOTIF = 16
+    ALL_SLAVES_ACTIVE = 17
+    MIN_LINKS = 18
+    LP_INTERVAL = 19
+    PACKETS_PER_SLAVE = 20
+    AD_LACP_RATE = 21
+    AD_SELECT = 22
+
+
+class BondMode(IntEnum):
+    """Bond interface modes"""
+
+    BALANCE_RR = 0  # Round-robin
+    ACTIVE_BACKUP = 1  # Failover
+    BALANCE_XOR = 2
+    BROADCAST = 3
+    LACP = 4  # 802.3ad
+    BALANCE_TLB = 5
+    BALANCE_ALB = 6
+
+
+class BondXmitHashPolicy(IntEnum):
+    """Bond transmit hash policy"""
+
+    LAYER2 = 0
+    LAYER34 = 1
+    LAYER23 = 2
+    ENCAP23 = 3
+    ENCAP34 = 4
+
+
+class BondLacpRate(IntEnum):
+    """LACP rate for 802.3ad mode"""
+
+    SLOW = 0
+    FAST = 1
 
 
 class IFAAttr(IntEnum):
@@ -213,6 +270,7 @@ class RTEXTFilter(IntFlag):
 
 class RTAAttr(IntEnum):
     """Route attributes (RTA_*)"""
+
     UNSPEC = 0
     DST = 1
     SRC = 2
@@ -248,6 +306,7 @@ class RTAAttr(IntEnum):
 
 class RTTable(IntEnum):
     """Routing table IDs"""
+
     UNSPEC = 0
     COMPAT = 252
     DEFAULT = 253
@@ -257,6 +316,7 @@ class RTTable(IntEnum):
 
 class RTProtocol(IntEnum):
     """Route origin (how route was learned)"""
+
     UNSPEC = 0
     REDIRECT = 1
     KERNEL = 2
@@ -283,6 +343,7 @@ class RTProtocol(IntEnum):
 
 class RTNType(IntEnum):
     """Route types"""
+
     UNSPEC = 0
     UNICAST = 1
     LOCAL = 2
@@ -299,6 +360,7 @@ class RTNType(IntEnum):
 
 class RTMFlags(IntFlag):
     """Route message flags"""
+
     NOTIFY = 0x100
     CLONED = 0x200
     EQUALIZE = 0x400

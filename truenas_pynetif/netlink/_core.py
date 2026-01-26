@@ -84,6 +84,11 @@ def pack_nlattr_str(attr_type: int, s: str) -> bytes:
     return pack_nlattr(attr_type, s.encode() + b"\x00")
 
 
+def pack_nlattr_u8(attr_type: int, val: int) -> bytes:
+    """Pack a u8 netlink attribute."""
+    return pack_nlattr(attr_type, struct.pack("B", val))
+
+
 def pack_nlattr_u16(attr_type: int, val: int) -> bytes:
     """Pack a u16 netlink attribute."""
     return pack_nlattr(attr_type, struct.pack("H", val))
