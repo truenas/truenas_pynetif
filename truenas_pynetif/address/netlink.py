@@ -5,7 +5,7 @@ from truenas_pynetif.address.bond import (
     bond_add_member,
     create_bond,
 )
-from truenas_pynetif.address.bridge import bridge_add_member, create_bridge
+from truenas_pynetif.address.bridge import bridge_add_member, create_bridge, set_bridge_priority
 from truenas_pynetif.address.constants import IFOperState
 from truenas_pynetif.address.dummy import create_dummy
 from truenas_pynetif.address.get_ipaddresses import get_addresses, get_link_addresses
@@ -45,6 +45,7 @@ __all__ = (
     "get_routes",
     "link_exists",
     "netlink_route",
+    "set_bridge_priority",
     "set_link_down",
     "set_link_mtu",
     "set_link_up",

@@ -6,16 +6,20 @@ from truenas_pynetif.address.constants import (
     AddressFamily,
     IFLAAttr,
     IFLABridgeAttr,
+    IFLAInfoAttr,
     RTMType,
 )
 from truenas_pynetif.netlink._core import (
     NLMsgFlags,
+    pack_nlattr_nested,
+    pack_nlattr_str,
+    pack_nlattr_u16,
     pack_nlattr_u32,
     pack_nlmsg,
     recv_msgs,
 )
 
-__all__ = ("create_bridge", "bridge_add_member")
+__all__ = ("create_bridge", "bridge_add_member", "set_bridge_priority")
 
 
 def create_bridge(
@@ -25,6 +29,7 @@ def create_bridge(
     *,
     members_index: list[int] | None = None,
     stp: bool | None = None,
+    priority: int | None = None,
 ) -> None:
     """Create a bridge interface.
 
@@ -34,6 +39,7 @@ def create_bridge(
         members: List of interface names to add as bridge members (mutually exclusive with members_index)
         members_index: List of interface indexes to add as bridge members (mutually exclusive with members)
         stp: Enable or disable Spanning Tree Protocol
+        priority: Bridge priority for STP (0-65535, lower = higher priority, default 32768)
     """
     if members and members_index:
         raise ValueError("members and members_index are mutually exclusive")
@@ -41,6 +47,8 @@ def create_bridge(
     info_data = b""
     if stp is not None:
         info_data += pack_nlattr_u32(IFLABridgeAttr.STP_STATE, 1 if stp else 0)
+    if priority is not None:
+        info_data += pack_nlattr_u16(IFLABridgeAttr.PRIORITY, priority)
 
     _create_link(sock, name, "bridge", info_data=info_data)
 
@@ -75,6 +83,36 @@ def bridge_add_member(
     master_index = _resolve_index(master, master_index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MASTER, master_index)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_bridge_priority(
+    sock: socket.socket,
+    priority: int,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the STP priority of a bridge interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        priority: Bridge priority (0-65535, lower = higher priority, default 32768)
+        name: Bridge interface name (mutually exclusive with index)
+        index: Bridge interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u16(IFLABridgeAttr.PRIORITY, priority)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bridge")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
     msg = pack_nlmsg(
         RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
     )
