@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import IntEnum
 from types import MappingProxyType
+from typing import Self, TypedDict
 
 from truenas_pynetif.ethtool.constants import (
     GENL_ID_CTRL,
@@ -32,6 +33,46 @@ from truenas_pynetif.ethtool.constants import (
 )
 from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
 
+__all__ = [
+    "DeviceNotFound",
+    "Duplex",
+    "EthtoolNetlink",
+    "FeaturesInfo",
+    "LinkInfo",
+    "LinkModesInfo",
+    "NetlinkError",
+    "OperationNotSupported",
+    "PortType",
+    "PORT_TYPE_NAMES",
+    "Transceiver",
+    "close_ethtool",
+    "get_ethtool",
+]
+
+
+class LinkModesInfo(TypedDict):
+    """Information about link modes from ethtool."""
+    speed: int | None
+    duplex: str
+    autoneg: bool
+    supported_modes: list[str]
+
+
+class LinkInfo(TypedDict):
+    """Information about physical link properties from ethtool."""
+    port: str
+    port_num: int
+    transceiver: str
+    phyaddr: int | None
+
+
+class FeaturesInfo(TypedDict):
+    """Information about network features from ethtool."""
+    enabled: list[str]
+    disabled: list[str]
+    supported: list[str]
+
+
 _link_mode_names: MappingProxyType[int, str] | None = None
 _feature_names: MappingProxyType[int, str] | None = None
 _cache_init_lock = threading.Lock()
@@ -49,7 +90,7 @@ class PortType(IntEnum):
     OTHER = 0xFF
 
 
-PORT_TYPE_NAMES: MappingProxyType = MappingProxyType({
+PORT_TYPE_NAMES: MappingProxyType[PortType, str] = MappingProxyType({
     PortType.TP: "Twisted Pair",
     PortType.AUI: "AUI",
     PortType.MII: "MII",
@@ -81,21 +122,21 @@ class EthtoolNetlink:
     _feature_names: dict[int, str] | MappingProxyType[int, str] | None = field(default=None, init=False)
     _link_mode_names: dict[int, str] | MappingProxyType[int, str] | None = field(default=None, init=False)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         self._connect()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: object) -> None:
         self.close()
 
-    def _connect(self):
+    def _connect(self) -> None:
         self._sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_GENERIC)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
         self._sock.bind((0, 0))
         self._pid = self._sock.getsockname()[0]
         self._family_id = self._resolve_family("ethtool")
 
-    def close(self):
+    def close(self) -> None:
         if self._sock:
             self._sock.close()
             self._sock = None
@@ -134,6 +175,8 @@ class EthtoolNetlink:
     def _recv_msgs(self) -> list[tuple[int, bytes]]:
         messages = []
         while True:
+            if self._sock is None:
+                raise NetlinkError("Socket not connected")
             data = self._sock.recv(65536)
             offset = 0
             done = False
@@ -184,12 +227,15 @@ class EthtoolNetlink:
     def _resolve_family(self, name: str) -> int:
         attrs = self._pack_nlattr_str(CtrlAttr.FAMILY_NAME, name)
         msg = self._pack_genlmsg(GENL_ID_CTRL, CtrlCmd.GETFAMILY, 1, attrs)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == GENL_ID_CTRL:
-                attrs = self._parse_attrs(payload, 4)
-                if CtrlAttr.FAMILY_ID in attrs:
-                    return struct.unpack("H", attrs[CtrlAttr.FAMILY_ID][:2])[0]
+                parsed_attrs = self._parse_attrs(payload, 4)
+                if CtrlAttr.FAMILY_ID in parsed_attrs:
+                    family_id: int = struct.unpack("H", parsed_attrs[CtrlAttr.FAMILY_ID][:2])[0]
+                    return family_id
         raise NetlinkError(f"Could not resolve family: {name}")
 
     def _make_header(self, ifname: str, flags: int = 0) -> bytes:
@@ -242,12 +288,16 @@ class EthtoolNetlink:
                 offset += (nla_len + 3) & ~3
         return size, value_bits, mask_bits
 
-    def get_link_modes(self, ifname: str) -> dict:
+    def get_link_modes(self, ifname: str) -> LinkModesInfo:
         link_mode_names = self._get_link_mode_names()
         header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKMODES_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
-        result = {
+        result: LinkModesInfo = {
             "speed": None,
             "duplex": "Unknown",
             "autoneg": False,
@@ -277,11 +327,15 @@ class EthtoolNetlink:
                     result["supported_modes"] = modes
         return result
 
-    def get_link_info(self, ifname: str) -> dict:
+    def get_link_info(self, ifname: str) -> LinkInfo:
         header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKINFO_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
-        result = {
+        result: LinkInfo = {
             "port": "Unknown",
             "port_num": 0,
             "transceiver": "internal",
@@ -293,7 +347,11 @@ class EthtoolNetlink:
                 if EthtoolALinkinfo.PORT in attrs:
                     port = attrs[EthtoolALinkinfo.PORT][0]
                     result["port_num"] = port
-                    result["port"] = PORT_TYPE_NAMES.get(port, f"Unknown({port})")
+                    try:
+                        port_type = PortType(port)
+                        result["port"] = PORT_TYPE_NAMES.get(port_type, f"Unknown({port})")
+                    except ValueError:
+                        result["port"] = f"Unknown({port})"
                 if EthtoolALinkinfo.TRANSCEIVER in attrs:
                     xcvr = attrs[EthtoolALinkinfo.TRANSCEIVER][0]
                     result["transceiver"] = "external" if xcvr == Transceiver.EXTERNAL else "internal"
@@ -303,7 +361,11 @@ class EthtoolNetlink:
 
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKSTATE_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
@@ -317,7 +379,11 @@ class EthtoolNetlink:
         stringset = self._pack_nlattr_nested(EthtoolAStringsets.STRINGSET, stringset_id)
         stringsets = self._pack_nlattr_nested(EthtoolAStrset.STRINGSETS, stringset)
         header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.STRSET_GET, 1, header + stringsets)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
         names: dict[int, str] = {}
         for msg_type, payload in self._recv_msgs():
@@ -339,7 +405,7 @@ class EthtoolNetlink:
         self._link_mode_names = self._query_string_set(EthSS.LINK_MODES)
         return self._link_mode_names
 
-    def _parse_stringsets(self, data: bytes, names: dict[int, str]):
+    def _parse_stringsets(self, data: bytes, names: dict[int, str]) -> None:
         offset = 0
         while offset + 4 <= len(data):
             nla_len, nla_type = struct.unpack_from("HH", data, offset)
@@ -349,12 +415,12 @@ class EthtoolNetlink:
                 self._parse_stringset(data[offset + 4 : offset + nla_len], names)
             offset += (nla_len + 3) & ~3
 
-    def _parse_stringset(self, data: bytes, names: dict[int, str]):
+    def _parse_stringset(self, data: bytes, names: dict[int, str]) -> None:
         attrs = self._parse_nested_attrs(data)
         if EthtoolAStringset.STRINGS in attrs:
             self._parse_strings(attrs[EthtoolAStringset.STRINGS], names)
 
-    def _parse_strings(self, data: bytes, names: dict[int, str]):
+    def _parse_strings(self, data: bytes, names: dict[int, str]) -> None:
         offset = 0
         while offset + 4 <= len(data):
             nla_len, nla_type = struct.unpack_from("HH", data, offset)
@@ -368,12 +434,16 @@ class EthtoolNetlink:
                     names[idx] = val
             offset += (nla_len + 3) & ~3
 
-    def get_features(self, ifname: str) -> dict:
+    def get_features(self, ifname: str) -> FeaturesInfo:
         feature_names = self._get_feature_names()
         header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEATURES_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
         self._sock.send(msg)
-        result: dict[str, list[str]] = {"enabled": [], "disabled": [], "supported": []}
+        result: FeaturesInfo = {"enabled": [], "disabled": [], "supported": []}
         hw_bits: set[int] = set()
         active_bits: set[int] = set()
         nochange_bits: set[int] = set()
@@ -435,6 +505,8 @@ def get_ethtool() -> EthtoolNetlink:
         eth._link_mode_names = link_modes
         eth._feature_names = features
         _ethtool_ctx.set(eth)
+    if eth is None:
+        raise NetlinkError("Socket not available")
     return eth
 
 

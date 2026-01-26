@@ -1,4 +1,6 @@
+from enum import IntEnum
 import subprocess
+from typing import Any
 
 __all__ = ["bitmask_to_set", "INTERNAL_INTERFACES", "run"]
 
@@ -21,11 +23,11 @@ INTERNAL_INTERFACES = (
 )
 
 
-def bitmask_to_set(n, enumeration):
+def bitmask_to_set(n: int, enumeration: type[IntEnum]) -> set[Any]:
     return {e for e in enumeration if n & e.value}
 
 
-def run(*args, **kwargs):
+def run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
     kwargs.setdefault("check", True)
     kwargs.setdefault("stdout", subprocess.PIPE)
     kwargs.setdefault("stderr", subprocess.PIPE)

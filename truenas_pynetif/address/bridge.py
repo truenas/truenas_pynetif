@@ -63,7 +63,7 @@ def create_bridge(
         if members:
             for member in members:
                 bridge_add_member(sock, member, master_index=bridge_index)
-        else:
+        elif members_index:
             for idx in members_index:
                 bridge_add_member(sock, index=idx, master_index=bridge_index)
 

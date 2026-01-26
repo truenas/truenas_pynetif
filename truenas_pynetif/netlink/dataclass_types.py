@@ -22,7 +22,7 @@ class AddressInfo:
     valid_lft: int | None = field(default=None, compare=False, hash=False)
     preferred_lft: int | None = field(default=None, compare=False, hash=False)
 
-    def asdict(self, stats: bool = False) -> dict:
+    def asdict(self, stats: bool = False) -> dict[str, str | int]:
         """Convert to dict format compatible with InterfaceAddress.asdict()."""
         if self.family == 2:  # ipv4 AF_INET
             af_name = "INET"
@@ -31,7 +31,7 @@ class AddressInfo:
         else:
             af_name = "LINK"
 
-        result = {
+        result: dict[str, str | int] = {
             "type": af_name,
             "address": self.address,
         }

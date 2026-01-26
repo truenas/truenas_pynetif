@@ -1,5 +1,6 @@
-import subprocess
 from logging import getLogger
+import subprocess
+from typing import Self, TypedDict
 
 from truenas_pynetif.ethtool import DeviceNotFound, OperationNotSupported, get_ethtool
 from truenas_pynetif.utils import run
@@ -8,15 +9,24 @@ from truenas_pynetif.utils import run
 logger = getLogger(__name__)
 
 
+class MediaInfo(TypedDict):
+    """Media information for network interface."""
+    media_type: str
+    media_subtype: str
+    active_media_type: str
+    active_media_subtype: str
+    supported_media: list[str]
+
+
 class EthernetHardwareSettings:
 
-    def __init__(self, interface):
+    def __init__(self, interface: str):
         self._name = interface
         self._caps = self.__capabilities__()
         self._media = self.__mediainfo__()
 
-    def __capabilities__(self):
-        result = {'enabled': [], 'disabled': [], 'supported': []}
+    def __capabilities__(self) -> dict[str, list[str]]:
+        result: dict[str, list[str]] = {'enabled': [], 'disabled': [], 'supported': []}
         return result
 
         # FIXME: unused and very inefficient with overall
@@ -31,7 +41,7 @@ class EthernetHardwareSettings:
             logger.error('Failed to get capabilities for %s', self._name, exc_info=True)
         return result
 
-    def __set_features__(self, action, capabilities):
+    def __set_features__(self, action: str, capabilities: list[str]) -> None:
         # c.f. comment in self.__capabilities__()
         return
 
@@ -60,31 +70,31 @@ class EthernetHardwareSettings:
                 logger.error('Failed to set features on %s: %s', self._name, e.stderr)
 
     @property
-    def enabled_capabilities(self):
+    def enabled_capabilities(self) -> list[str]:
         return self._caps['enabled']
 
     @enabled_capabilities.setter
-    def enabled_capabilities(self, capabilities):
+    def enabled_capabilities(self, capabilities: list[str]) -> None:
         # c.f. comment in self.__capabilities__()
         return
         self.__set_features__('enable', capabilities)
 
     @property
-    def disabled_capabilities(self):
+    def disabled_capabilities(self) -> list[str]:
         return self._caps['disabled']
 
     @disabled_capabilities.setter
-    def disabled_capabilities(self, capabilities):
+    def disabled_capabilities(self, capabilities: list[str]) -> None:
         # c.f. comment in self.__capabilities__()
         return
         self.__set_features__('disable', capabilities)
 
     @property
-    def supported_capabilities(self):
+    def supported_capabilities(self) -> list[str]:
         return self._caps['supported']
 
-    def __mediainfo__(self):
-        result = {
+    def __mediainfo__(self) -> MediaInfo:
+        result: MediaInfo = {
             'media_type': '',
             'media_subtype': '',
             'active_media_type': '',
@@ -115,30 +125,30 @@ class EthernetHardwareSettings:
         return result
 
     @property
-    def media_type(self):
+    def media_type(self) -> str:
         return self._media['media_type']
 
     @property
-    def media_subtype(self):
+    def media_subtype(self) -> str:
         return self._media['media_subtype']
 
     @property
-    def active_media_type(self):
+    def active_media_type(self) -> str:
         return self._media['active_media_type']
 
     @property
-    def active_media_subtype(self):
+    def active_media_subtype(self) -> str:
         return self._media['active_media_subtype']
 
     @property
-    def supported_media(self):
+    def supported_media(self) -> list[str]:
         return self._media['supported_media']
 
-    def close(self):
+    def close(self) -> None:
         pass
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, typ, value, traceback):
+    def __exit__(self, typ: object, value: object, traceback: object) -> None:
         self.close()

@@ -54,7 +54,14 @@ exclude = [
 ]
 
 [tool.mypy]
-python_version = "3.13"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["pyroute2", "pyroute2.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["truenas_pynetif.address.mixin", "truenas_pynetif.bridge", "truenas_pynetif.interface",
+          "truenas_pynetif.lagg", "truenas_pynetif.netif", "truenas_pynetif.routing", "truenas_pynetif.vlan",
+          "truenas_pynetif.vrrp"]
+ignore_errors = true
