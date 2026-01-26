@@ -14,7 +14,7 @@ from truenas_pynetif.address.netlink import (
     link_exists,
     netlink_route,
 )
-from truenas_pynetif.address.types import AddressFamily, InterfaceAddress, LinkAddress
+from truenas_pynetif.address.types import AddressFamily
 
 __all__ = [
     "AddressFamily",
@@ -22,8 +22,6 @@ __all__ = [
     "AddressMixin",
     "DeviceNotFound",
     "IFOperState",
-    "InterfaceAddress",
-    "LinkAddress",
     "LinkInfo",
     "RouteInfo",
     "get_addresses",
