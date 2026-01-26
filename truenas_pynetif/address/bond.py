@@ -29,6 +29,9 @@ __all__ = (
     "bond_add_member",
     "bond_rem_member",
     "set_bond_mode",
+    "set_bond_primary",
+    "set_bond_xmit_hash_policy",
+    "set_lacpdu_rate",
     "BondHasMembers",
     "BondMode",
     "BondLacpRate",
@@ -99,13 +102,28 @@ def create_bond(
 
     # Set primary after members are added
     if primary or primary_index:
-        primary_index = _resolve_index(primary, primary_index)
-        _set_bond_primary(sock, name, primary_index)
+        set_bond_primary(sock, primary, primary_index=primary_index, name=name)
 
 
-def _set_bond_primary(sock: socket.socket, bond_name: str, primary_index: int) -> None:
-    """Set the primary interface for a bond."""
-    bond_index = socket.if_nametoindex(bond_name)
+def set_bond_primary(
+    sock: socket.socket,
+    primary: str | None = None,
+    *,
+    primary_index: int | None = None,
+    name: str | None = None,
+    index: int | None = None,
+) -> None:
+    """Set the primary interface for a bond.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        primary: Name of the primary interface (mutually exclusive with primary_index)
+        primary_index: Index of the primary interface (mutually exclusive with primary)
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+    """
+    bond_index = _resolve_index(name, index)
+    primary_index = _resolve_index(primary, primary_index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, bond_index, 0, 0)
 
     info_data = pack_nlattr_u32(IFLABondAttr.PRIMARY, primary_index)
@@ -214,3 +232,63 @@ def set_bond_mode(
                 "Remove members first with bond_rem_member()."
             ) from e
         raise
+
+
+def set_bond_xmit_hash_policy(
+    sock: socket.socket,
+    xmit_hash_policy: BondXmitHashPolicy,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the transmit hash policy of a bond interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        xmit_hash_policy: Transmit hash policy to set (see BondXmitHashPolicy enum)
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u8(IFLABondAttr.XMIT_HASH_POLICY, xmit_hash_policy)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bond")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_lacpdu_rate(
+    sock: socket.socket,
+    lacpdu_rate: BondLacpRate,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the LACPDU rate of a bond interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        lacpdu_rate: LACPDU rate to set (SLOW=every 30s, FAST=every 1s)
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u8(IFLABondAttr.AD_LACP_RATE, lacpdu_rate)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bond")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
