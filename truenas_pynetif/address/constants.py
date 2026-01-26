@@ -129,6 +129,20 @@ class IFLAVlanAttr(IntEnum):
     ID = 1
 
 
+class IFLABridgeAttr(IntEnum):
+    """IFLA_INFO_DATA attributes for bridge"""
+
+    UNSPEC = 0
+    FORWARD_DELAY = 1
+    HELLO_TIME = 2
+    MAX_AGE = 3
+    AGEING_TIME = 4
+    STP_STATE = 5
+    PRIORITY = 6
+    VLAN_FILTERING = 7
+    VLAN_PROTOCOL = 8
+
+
 class IFLABondAttr(IntEnum):
     """IFLA_INFO_DATA attributes for bond"""
 
