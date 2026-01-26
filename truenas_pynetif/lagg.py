@@ -108,7 +108,7 @@ class LaggMixin:
                         try:
                             bond.add_port(member)
                         except Exception:
-                            logger.warning('Failed adding %r to %r', member, self.name, exc_inf=True)
+                            logger.warning('Failed adding %r to %r', member, self.name, exc_info=True)
 
     def delete_port(self, member_port):
         return self.delete_ports([member_port])
