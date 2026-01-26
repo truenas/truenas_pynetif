@@ -1,3 +1,4 @@
+import errno
 import socket
 import struct
 
@@ -21,11 +22,14 @@ from truenas_pynetif.netlink._core import (
     pack_nlmsg,
     recv_msgs,
 )
+from truenas_pynetif.netlink._exceptions import BondHasMembers, NetlinkError
 
 __all__ = (
     "create_bond",
     "bond_add_member",
     "bond_rem_member",
+    "set_bond_mode",
+    "BondHasMembers",
     "BondMode",
     "BondLacpRate",
     "BondXmitHashPolicy",
@@ -165,3 +169,48 @@ def bond_rem_member(
     )
     sock.send(msg)
     recv_msgs(sock)
+
+
+def set_bond_mode(
+    sock: socket.socket,
+    mode: BondMode,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the mode of a bond interface.
+
+    Note:
+        A bond's mode cannot be changed while members are attached.
+        Remove all members first using bond_rem_member().
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        mode: Bond mode to set (see BondMode enum)
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+
+    Raises:
+        BondHasMembers: If the bond has members attached.
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u8(IFLABondAttr.MODE, mode)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bond")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    try:
+        recv_msgs(sock)
+    except NetlinkError as e:
+        if str(errno.ENOTEMPTY) in str(e):
+            raise BondHasMembers(
+                "Cannot change bond mode while members are attached. "
+                "Remove members first with bond_rem_member()."
+            ) from e
+        raise
