@@ -22,6 +22,7 @@ from truenas_pynetif.netlink._core import (
 __all__ = (
     "create_bridge",
     "bridge_add_member",
+    "bridge_rem_member",
     "set_bridge_priority",
     "set_bridge_stp",
 )
@@ -88,6 +89,29 @@ def bridge_add_member(
     master_index = _resolve_index(master, master_index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MASTER, master_index)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def bridge_rem_member(
+    sock: socket.socket,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Remove an interface from its bridge.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Name of interface to remove (mutually exclusive with index)
+        index: Index of interface to remove (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+    attrs = pack_nlattr_u32(IFLAAttr.MASTER, 0)
     msg = pack_nlmsg(
         RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
     )
