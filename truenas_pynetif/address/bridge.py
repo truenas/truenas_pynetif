@@ -19,7 +19,12 @@ from truenas_pynetif.netlink._core import (
     recv_msgs,
 )
 
-__all__ = ("create_bridge", "bridge_add_member", "set_bridge_priority")
+__all__ = (
+    "create_bridge",
+    "bridge_add_member",
+    "set_bridge_priority",
+    "set_bridge_stp",
+)
 
 
 def create_bridge(
@@ -28,8 +33,8 @@ def create_bridge(
     members: list[str] | None = None,
     *,
     members_index: list[int] | None = None,
-    stp: bool | None = None,
-    priority: int | None = None,
+    stp: bool | None = True,
+    priority: int | None = 32768,
 ) -> None:
     """Create a bridge interface.
 
@@ -109,6 +114,36 @@ def set_bridge_priority(
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
 
     info_data = pack_nlattr_u16(IFLABridgeAttr.PRIORITY, priority)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bridge")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_bridge_stp(
+    sock: socket.socket,
+    stp: bool,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Enable or disable Spanning Tree Protocol on a bridge interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        stp: True to enable STP, False to disable
+        name: Bridge interface name (mutually exclusive with index)
+        index: Bridge interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u32(IFLABridgeAttr.STP_STATE, 1 if stp else 0)
     linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bridge")
     linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
     attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
