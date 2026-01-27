@@ -1,3 +1,6 @@
+__all__ = ['NetlinkError', 'DeviceNotFound', 'OperationNotSupported', 'DumpInterrupted', 'BondHasMembers']
+
+
 class NetlinkError(Exception):
     pass
 
