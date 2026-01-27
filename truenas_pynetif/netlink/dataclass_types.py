@@ -62,6 +62,8 @@ class LinkInfo:
     carrier_changes: int = 0
     num_tx_queues: int = 1
     num_rx_queues: int = 1
+    # Master device index (for bond members, bridge ports, etc.)
+    master: int | None = None
     # Parent device info (for USB detection, etc.)
     parentbus: str | None = None
     parentdev: str | None = None

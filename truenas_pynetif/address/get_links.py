@@ -81,6 +81,11 @@ def _parse_link_payload(payload: bytes) -> tuple[str, LinkInfo] | None:
     if IFLAAttr.NUM_RX_QUEUES in attrs:
         num_rx_queues = struct.unpack("I", attrs[IFLAAttr.NUM_RX_QUEUES][:4])[0]
 
+    # Master device index (for bond members, bridge ports, etc.)
+    master = None
+    if IFLAAttr.MASTER in attrs:
+        master = struct.unpack("I", attrs[IFLAAttr.MASTER][:4])[0]
+
     # Parent device info (for USB detection, etc.)
     parentbus = None
     parentdev = None
@@ -130,6 +135,7 @@ def _parse_link_payload(payload: bytes) -> tuple[str, LinkInfo] | None:
         carrier_changes=carrier_changes,
         num_tx_queues=num_tx_queues,
         num_rx_queues=num_rx_queues,
+        master=master,
         parentbus=parentbus,
         parentdev=parentdev,
         altnames=tuple(altnames),

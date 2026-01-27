@@ -23,11 +23,13 @@ from truenas_pynetif.netlink._core import (
     recv_msgs,
 )
 from truenas_pynetif.netlink._exceptions import BondHasMembers, NetlinkError
+from truenas_pynetif.netlink.dataclass_types import LinkInfo
 
 __all__ = (
     "create_bond",
     "bond_add_member",
     "bond_rem_member",
+    "get_bond_members",
     "set_bond_mode",
     "set_bond_miimon",
     "set_bond_primary",
@@ -188,6 +190,30 @@ def bond_rem_member(
     )
     sock.send(msg)
     recv_msgs(sock)
+
+
+def get_bond_members(
+    links: dict[str, LinkInfo],
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> tuple[tuple[str, int], ...]:
+    """Get the members of a bond interface.
+
+    Args:
+        links: Link information dict from get_links()
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+
+    Returns:
+        Tuple of (name, index) tuples for each member interface.
+    """
+    bond_index = _resolve_index(name, index)
+    return tuple(
+        (ifname, info.index)
+        for ifname, info in links.items()
+        if info.master == bond_index
+    )
 
 
 def set_bond_mode(
