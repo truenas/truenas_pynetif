@@ -6,13 +6,16 @@ from truenas_pynetif.address.constants import (
     AddressFamily,
     IFLAAttr,
     IFLABridgeAttr,
+    IFLABrPortAttr,
     IFLAInfoAttr,
     RTMType,
 )
 from truenas_pynetif.netlink._core import (
     NLMsgFlags,
+    pack_nlattr,
     pack_nlattr_nested,
     pack_nlattr_str,
+    pack_nlattr_u8,
     pack_nlattr_u16,
     pack_nlattr_u32,
     pack_nlmsg,
@@ -23,6 +26,7 @@ __all__ = (
     "create_bridge",
     "bridge_add_member",
     "bridge_rem_member",
+    "set_bridge_learning",
     "set_bridge_priority",
     "set_bridge_stp",
 )
@@ -112,6 +116,37 @@ def bridge_rem_member(
     index = _resolve_index(name, index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MASTER, 0)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_bridge_learning(
+    sock: socket.socket,
+    enable: bool,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Enable or disable learning on a bridge port.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        enable: True to enable learning, False to disable
+        name: Bridge port interface name (mutually exclusive with index)
+        index: Bridge port interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    # Bridge port attributes nested in LINKINFO/SLAVE_KIND/SLAVE_DATA
+    slave_data = pack_nlattr_u8(IFLABrPortAttr.LEARNING, 1 if enable else 0)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.SLAVE_KIND, "bridge")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.SLAVE_DATA, slave_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
     msg = pack_nlmsg(
         RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
     )
