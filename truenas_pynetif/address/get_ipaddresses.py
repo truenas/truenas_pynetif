@@ -1,6 +1,7 @@
 import socket
 import struct
 
+from truenas_pynetif.address._link_helpers import _resolve_index
 from truenas_pynetif.address.constants import (
     AddressFamily,
     IFAAttr,
@@ -106,12 +107,20 @@ def get_addresses(sock: socket.socket) -> list[AddressInfo]:
     return addresses
 
 
-def get_link_addresses(sock: socket.socket, name: str) -> list[AddressInfo]:
-    """Get addresses for a single interface by name."""
-    try:
-        index = socket.if_nametoindex(name)
-    except OSError:
-        raise DeviceNotFound(f"No such device: {name}")
+def get_link_addresses(
+    sock: socket.socket,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> list[AddressInfo]:
+    """Get addresses for a single interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Interface name (mutually exclusive with index)
+        index: Interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
 
     # Enable strict checking so kernel filters by interface index
     sock.setsockopt(SOL_NETLINK, NetlinkSockOpt.GET_STRICT_CHK, 1)
@@ -122,7 +131,9 @@ def get_link_addresses(sock: socket.socket, name: str) -> list[AddressInfo]:
         )
         sock.send(msg)
 
-        ifname_cache: dict[int, str | None] = {index: name}
+        ifname_cache: dict[int, str | None] = {}
+        if name is not None:
+            ifname_cache[index] = name
         addresses: list[AddressInfo] = []
         for msg_type, payload in recv_msgs(sock):
             if msg_type != RTMType.NEWADDR:
