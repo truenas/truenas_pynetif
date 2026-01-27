@@ -7,7 +7,9 @@ from truenas_pynetif.address.constants import (
     AddressFamily,
     IFAAttr,
     RTMType,
+    RTScope,
 )
+from truenas_pynetif.address.get_ipaddresses import get_link_addresses
 from truenas_pynetif.netlink._core import (
     NLMsgFlags,
     pack_nlattr,
@@ -15,7 +17,7 @@ from truenas_pynetif.netlink._core import (
     recv_msgs,
 )
 
-__all__ = ("add_address", "remove_address")
+__all__ = ("add_address", "remove_address", "flush_addresses")
 
 
 def _parse_address_params(
@@ -129,3 +131,34 @@ def remove_address(
     )
     sock.send(msg)
     recv_msgs(sock)
+
+
+def flush_addresses(
+    sock: socket.socket,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+    family: int | None = None,
+    scope: int = RTScope.UNIVERSE,
+) -> None:
+    """Remove addresses from an interface filtered by scope and optionally by family.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        name: Interface name (mutually exclusive with index)
+        index: Interface index (mutually exclusive with name)
+        family: Optional address family to filter (AddressFamily.INET or AddressFamily.INET6)
+        scope: Routing scope to filter (default: RTScope.UNIVERSE for global addresses, use RTScope.ALL for all scopes)
+    """
+    ifindex = _resolve_index(name, index)
+
+    # Get all addresses for the interface
+    addresses = get_link_addresses(sock, index=ifindex)
+
+    # Remove addresses matching scope and family filters
+    for addr in addresses:
+        if scope != RTScope.ALL and addr.scope != scope:
+            continue
+        if family is not None and addr.family != family:
+            continue
+        remove_address(sock, addr.address, addr.prefixlen, index=ifindex)

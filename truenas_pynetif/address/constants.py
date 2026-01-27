@@ -232,6 +232,17 @@ class IFAAttr(IntEnum):
     PROTO = 11
 
 
+class RTScope(IntEnum):
+    """Routing scope values"""
+
+    ALL = -1
+    UNIVERSE = 0
+    SITE = 200
+    LINK = 253
+    HOST = 254
+    NOWHERE = 255
+
+
 class IFAFlags(IntFlag):
     SECONDARY = 0x01
     TEMPORARY = 0x01
@@ -246,14 +257,6 @@ class IFAFlags(IntFlag):
     NOPREFIXROUTE = 0x200
     MCAUTOJOIN = 0x400
     STABLE_PRIVACY = 0x800
-
-
-class RTScope(IntEnum):
-    UNIVERSE = 0
-    SITE = 200
-    LINK = 253
-    HOST = 254
-    NOWHERE = 255
 
 
 class IFFlags(IntFlag):
