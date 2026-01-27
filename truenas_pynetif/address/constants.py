@@ -143,6 +143,23 @@ class IFLABridgeAttr(IntEnum):
     VLAN_PROTOCOL = 8
 
 
+class IFLABrPortAttr(IntEnum):
+    """IFLA_PROTINFO attributes for bridge ports"""
+
+    UNSPEC = 0
+    STATE = 1
+    PRIORITY = 2
+    COST = 3
+    MODE = 4
+    GUARD = 5
+    PROTECT = 6
+    FAST_LEAVE = 7
+    LEARNING = 8
+    UNICAST_FLOOD = 9
+    PROXYARP = 10
+    LEARNING_SYNC = 11
+
+
 class IFLABondAttr(IntEnum):
     """IFLA_INFO_DATA attributes for bond"""
 
