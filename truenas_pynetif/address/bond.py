@@ -29,6 +29,7 @@ __all__ = (
     "bond_add_member",
     "bond_rem_member",
     "set_bond_mode",
+    "set_bond_miimon",
     "set_bond_primary",
     "set_bond_xmit_hash_policy",
     "set_lacpdu_rate",
@@ -48,7 +49,7 @@ def create_bond(
     members_index: list[int] | None = None,
     xmit_hash_policy: BondXmitHashPolicy | None = None,
     lacpdu_rate: BondLacpRate | None = None,
-    miimon: int | None = None,
+    miimon: int | None = 100,
     primary: str | None = None,
     primary_index: int | None = None,
 ) -> None:
@@ -69,7 +70,7 @@ def create_bond(
         members_index: List of interface indexes to add as bond members (mutually exclusive with members)
         xmit_hash_policy: Transmit hash policy for BALANCE_XOR and LACP modes
         lacpdu_rate: LACPDU packet rate for LACP mode (SLOW=every 30s, FAST=every 1s)
-        miimon: MII link monitoring interval in milliseconds
+        miimon: MII link monitoring interval in milliseconds (default 100ms)
         primary: Primary interface name for ACTIVE_BACKUP mode (mutually exclusive with primary_index)
         primary_index: Primary interface index for ACTIVE_BACKUP mode (mutually exclusive with primary)
     """
@@ -232,6 +233,36 @@ def set_bond_mode(
                 "Remove members first with bond_rem_member()."
             ) from e
         raise
+
+
+def set_bond_miimon(
+    sock: socket.socket,
+    miimon: int,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the MII link monitoring interval of a bond interface.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        miimon: MII link monitoring interval in milliseconds
+        name: Bond interface name (mutually exclusive with index)
+        index: Bond interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+
+    info_data = pack_nlattr_u32(IFLABondAttr.MIIMON, miimon)
+    linkinfo = pack_nlattr_str(IFLAInfoAttr.KIND, "bond")
+    linkinfo += pack_nlattr_nested(IFLAInfoAttr.DATA, info_data)
+    attrs = pack_nlattr_nested(IFLAAttr.LINKINFO, linkinfo)
+
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
 
 
 def set_bond_xmit_hash_policy(
