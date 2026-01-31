@@ -4,6 +4,10 @@ import struct
 from truenas_pynetif.address.constants import (
     AddressFamily,
     IFLAAttr,
+    IFLABondAttr,
+    IFLABridgeAttr,
+    IFLAInfoAttr,
+    IFLAVlanAttr,
     RTEXTFilter,
     RTMType,
 )
@@ -114,11 +118,69 @@ def _parse_link_payload(payload: bytes) -> tuple[str, LinkInfo] | None:
                 break
             nla_type_base = nla_type & 0x7FFF
             if nla_type_base == IFLAAttr.ALT_IFNAME:
-                attr_data = prop_data[offset + 4 : offset + nla_len]
+                attr_data = prop_data[offset+4:offset+nla_len]
                 altnames.append(
                     attr_data.rstrip(b"\x00").decode("utf-8", errors="replace")
                 )
             offset += (nla_len + 3) & ~3
+
+    # Parse IFLA_LINKINFO for bond/bridge/vlan details
+    kind = None
+    bond_mode = None
+    bond_miimon = None
+    bond_xmit_hash_policy = None
+    bond_lacpdu_rate = None
+    bond_primary = None
+    bridge_stp_state = None
+    bridge_priority = None
+    vlan_id = None
+    vlan_parent = None
+
+    if IFLAAttr.LINKINFO in attrs:
+        linkinfo_attrs = parse_attrs(attrs[IFLAAttr.LINKINFO])
+        if IFLAInfoAttr.KIND in linkinfo_attrs:
+            kind = (
+                linkinfo_attrs[IFLAInfoAttr.KIND]
+                .rstrip(b"\x00")
+                .decode("utf-8", errors="replace")
+            )
+
+        if IFLAInfoAttr.DATA in linkinfo_attrs:
+            info_data = parse_attrs(linkinfo_attrs[IFLAInfoAttr.DATA])
+
+            if kind == "bond":
+                if IFLABondAttr.MODE in info_data:
+                    bond_mode = info_data[IFLABondAttr.MODE][0]
+                if IFLABondAttr.MIIMON in info_data:
+                    bond_miimon = struct.unpack(
+                        "I", info_data[IFLABondAttr.MIIMON][:4]
+                    )[0]
+                if IFLABondAttr.XMIT_HASH_POLICY in info_data:
+                    bond_xmit_hash_policy = info_data[IFLABondAttr.XMIT_HASH_POLICY][0]
+                if IFLABondAttr.AD_LACP_RATE in info_data:
+                    bond_lacpdu_rate = info_data[IFLABondAttr.AD_LACP_RATE][0]
+                if IFLABondAttr.PRIMARY in info_data:
+                    bond_primary = struct.unpack(
+                        "I", info_data[IFLABondAttr.PRIMARY][:4]
+                    )[0]
+
+            elif kind == "bridge":
+                if IFLABridgeAttr.STP_STATE in info_data:
+                    bridge_stp_state = struct.unpack(
+                        "I", info_data[IFLABridgeAttr.STP_STATE][:4]
+                    )[0]
+                if IFLABridgeAttr.PRIORITY in info_data:
+                    bridge_priority = struct.unpack(
+                        "H", info_data[IFLABridgeAttr.PRIORITY][:2]
+                    )[0]
+
+            elif kind == "vlan":
+                if IFLAVlanAttr.ID in info_data:
+                    vlan_id = struct.unpack("H", info_data[IFLAVlanAttr.ID][:2])[0]
+
+    # Parse IFLA_LINK for vlan parent interface index
+    if IFLAAttr.LINK in attrs and kind == "vlan":
+        vlan_parent = struct.unpack("I", attrs[IFLAAttr.LINK][:4])[0]
 
     return ifname, LinkInfo(
         index=ifi_index,
@@ -139,6 +201,16 @@ def _parse_link_payload(payload: bytes) -> tuple[str, LinkInfo] | None:
         parentbus=parentbus,
         parentdev=parentdev,
         altnames=tuple(altnames),
+        kind=kind,
+        bond_mode=bond_mode,
+        bond_miimon=bond_miimon,
+        bond_xmit_hash_policy=bond_xmit_hash_policy,
+        bond_lacpdu_rate=bond_lacpdu_rate,
+        bond_primary=bond_primary,
+        bridge_stp_state=bridge_stp_state,
+        bridge_priority=bridge_priority,
+        vlan_id=vlan_id,
+        vlan_parent=vlan_parent,
     )
 
 
