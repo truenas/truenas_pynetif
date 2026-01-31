@@ -69,6 +69,20 @@ class LinkInfo:
     parentdev: str | None = None
     # Alternate names
     altnames: tuple[str, ...] = ()
+    # Link kind (bond, bridge, vlan, etc.)
+    kind: str | None = None
+    # Bond-specific (only when kind == "bond")
+    bond_mode: int | None = None
+    bond_miimon: int | None = None
+    bond_xmit_hash_policy: int | None = None
+    bond_lacpdu_rate: int | None = None
+    bond_primary: int | None = None
+    # Bridge-specific (only when kind == "bridge")
+    bridge_stp_state: int | None = None
+    bridge_priority: int | None = None
+    # VLAN-specific (only when kind == "vlan")
+    vlan_id: int | None = None
+    vlan_parent: int | None = None
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
