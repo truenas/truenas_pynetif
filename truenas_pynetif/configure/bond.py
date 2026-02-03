@@ -15,7 +15,9 @@ from truenas_pynetif.address.bond import (
     set_bond_primary,
     set_bond_xmit_hash_policy,
     set_lacpdu_rate,
+    BondLacpRate,
     BondMode,
+    BondXmitHashPolicy,
 )
 from truenas_pynetif.address.get_links import get_link, get_links
 from truenas_pynetif.address.link import (
@@ -34,8 +36,8 @@ class BondConfig:
     name: str
     mode: Literal["LACP", "FAILOVER", "LOADBALANCE"]
     members: list[str]
-    xmit_hash_policy: str | None = None
-    lacpdu_rate: str | None = None
+    xmit_hash_policy: BondXmitHashPolicy | None = None
+    lacpdu_rate: BondLacpRate | None = None
     miimon: int = 100
     primary: str | None = None
     mtu: int = 1500
@@ -100,10 +102,10 @@ def configure_bond(
         needs_down = True
     if (
         config.xmit_hash_policy
-        and link.bond_xmit_hash_policy != config.xmit_hash_policy
+        and link.bond_xmit_hash_policy != config.xmit_hash_policy.value
     ):
         needs_down = True
-    if config.lacpdu_rate and link.bond_lacpdu_rate != config.lacpdu_rate:
+    if config.lacpdu_rate and link.bond_lacpdu_rate != config.lacpdu_rate.value:
         needs_down = True
     if config.primary and link.bond_primary != socket.if_nametoindex(config.primary):
         needs_down = True
