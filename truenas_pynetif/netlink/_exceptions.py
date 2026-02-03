@@ -1,8 +1,19 @@
-__all__ = ['NetlinkError', 'DeviceNotFound', 'OperationNotSupported', 'DumpInterrupted', 'BondHasMembers']
+import errno
+
+__all__ = [
+    "NetlinkError",
+    "DeviceNotFound",
+    "OperationNotSupported",
+    "DumpInterrupted",
+    "BondHasMembers",
+    "InterfaceAlreadyExists",
+]
 
 
 class NetlinkError(Exception):
-    pass
+    def __init__(self, message: str, error_code: int | None = None):
+        super().__init__(message)
+        self.errno = error_code
 
 
 class DeviceNotFound(NetlinkError):
@@ -19,3 +30,10 @@ class DumpInterrupted(NetlinkError):
 
 class BondHasMembers(NetlinkError):
     pass
+
+
+class InterfaceAlreadyExists(NetlinkError):
+    def __init__(self, name: str):
+        super().__init__(f"Interface {name!r} already exists")
+        self.errno = errno.EEXIST
+        self.name = name
