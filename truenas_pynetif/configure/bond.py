@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import errno
 import socket
 from typing import Literal
@@ -25,21 +26,25 @@ from truenas_pynetif.address.link import (
 )
 from truenas_pynetif.netlink import LinkInfo, NetlinkError
 
-__all__ = ("configure_bond",)
+__all__ = ("BondConfig", "configure_bond")
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class BondConfig:
+    name: str
+    mode: Literal["LACP", "FAILOVER", "LOADBALANCE"]
+    members: list[str]
+    xmit_hash_policy: str | None = None
+    lacpdu_rate: str | None = None
+    miimon: int = 100
+    primary: str | None = None
+    mtu: int = 1500
 
 
 def configure_bond(
     sock: socket.socket,
-    name: str,
-    mode: Literal["LACP", "FAILOVER", "LOADBALANCE"],
-    members: list[str],
+    config: BondConfig,
     links: dict[str, LinkInfo] | None = None,
-    *,
-    xmit_hash_policy: str | None = None,
-    lacpdu_rate: str | None = None,
-    miimon: int | None = 100,
-    primary: str | None = None,
-    mtu: int | None = 1500,
 ) -> None:
     if links is None:
         links = get_links(sock)
@@ -49,57 +54,60 @@ def configure_bond(
         "FAILOVER": BondMode.ACTIVE_BACKUP,
         "LOADBALANCE": BondMode.BALANCE_XOR,
     }
-    target_mode = mode_map[mode]
+    target_mode = mode_map[config.mode]
 
     # Try to create bond (avoid TOCTOU by catching EEXIST)
     try:
         create_bond(
             sock,
-            name,
+            config.name,
             mode=target_mode,
-            xmit_hash_policy=xmit_hash_policy,
-            lacpdu_rate=lacpdu_rate,
-            miimon=miimon,
-            primary=primary,
+            xmit_hash_policy=config.xmit_hash_policy,
+            lacpdu_rate=config.lacpdu_rate,
+            miimon=config.miimon,
+            primary=config.primary,
         )
-        links[name] = get_link(sock, name=name)
+        links[config.name] = get_link(sock, name=config.name)
     except NetlinkError as e:
         if e.errno == errno.EEXIST:
             # Interface already exists, fetch it
-            links[name] = get_link(sock, name=name)
+            links[config.name] = get_link(sock, name=config.name)
         else:
             raise
 
-    link = links[name]
+    link = links[config.name]
 
     # Check if first member changed (requires recreate)
     current_members = [m[0] for m in get_bond_members(links, index=link.index)]
-    if current_members and members and current_members[0] != members[0]:
+    if current_members and config.members and current_members[0] != config.members[0]:
         delete_link(sock, index=link.index)
         create_bond(
             sock,
-            name,
+            config.name,
             mode=target_mode,
-            xmit_hash_policy=xmit_hash_policy,
-            lacpdu_rate=lacpdu_rate,
-            miimon=miimon,
-            primary=primary,
+            xmit_hash_policy=config.xmit_hash_policy,
+            lacpdu_rate=config.lacpdu_rate,
+            miimon=config.miimon,
+            primary=config.primary,
         )
-        links[name] = get_link(sock, name=name)
-        link = links[name]
+        links[config.name] = get_link(sock, name=config.name)
+        link = links[config.name]
         current_members = []
 
     # Update bond settings if changed
     needs_down = False
     if link.bond_mode != target_mode:
         needs_down = True
-    if xmit_hash_policy and link.bond_xmit_hash_policy != xmit_hash_policy:
+    if (
+        config.xmit_hash_policy
+        and link.bond_xmit_hash_policy != config.xmit_hash_policy
+    ):
         needs_down = True
-    if lacpdu_rate and link.bond_lacpdu_rate != lacpdu_rate:
+    if config.lacpdu_rate and link.bond_lacpdu_rate != config.lacpdu_rate:
         needs_down = True
-    if primary and link.bond_primary != socket.if_nametoindex(primary):
+    if config.primary and link.bond_primary != socket.if_nametoindex(config.primary):
         needs_down = True
-    if miimon and link.bond_miimon != miimon:
+    if config.miimon and link.bond_miimon != config.miimon:
         needs_down = True
 
     if needs_down:
@@ -112,22 +120,22 @@ def configure_bond(
             set_bond_mode(sock, target_mode, index=link.index)
             current_members = []
 
-        if xmit_hash_policy:
-            set_bond_xmit_hash_policy(sock, xmit_hash_policy, index=link.index)
-        if lacpdu_rate:
-            set_lacpdu_rate(sock, lacpdu_rate, index=link.index)
-        if miimon:
-            set_bond_miimon(sock, miimon, index=link.index)
-        if primary:
-            set_bond_primary(sock, primary, index=link.index)
+        if config.xmit_hash_policy:
+            set_bond_xmit_hash_policy(sock, config.xmit_hash_policy, index=link.index)
+        if config.lacpdu_rate:
+            set_lacpdu_rate(sock, config.lacpdu_rate, index=link.index)
+        if config.miimon:
+            set_bond_miimon(sock, config.miimon, index=link.index)
+        if config.primary:
+            set_bond_primary(sock, config.primary, index=link.index)
 
         set_link_up(sock, index=link.index)
-        links[name] = get_link(sock, name=name)
+        links[config.name] = get_link(sock, name=config.name)
 
     # Update members
     current_members = [m[0] for m in get_bond_members(links, index=link.index)]
     current_members_set = set(current_members)
-    desired_members_set = set(members)
+    desired_members_set = set(config.members)
 
     for member in current_members_set - desired_members_set:
         bond_rem_member(sock, index=links[member].index)
@@ -136,12 +144,12 @@ def configure_bond(
         bond_add_member(sock, index=links[member].index, master_index=link.index)
 
     # Bring up all members
-    for member in members:
+    for member in config.members:
         set_link_up(sock, index=links[member].index)
 
     # Set MTU if specified
-    if mtu:
-        set_link_mtu(sock, mtu, index=link.index)
+    if config.mtu:
+        set_link_mtu(sock, config.mtu, index=link.index)
 
     # Bring up bond
     set_link_up(sock, index=link.index)
