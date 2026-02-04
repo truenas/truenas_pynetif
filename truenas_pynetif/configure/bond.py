@@ -81,6 +81,8 @@ def configure_bond(
 
     # Check if first member changed (requires recreate)
     current_members = [m[0] for m in get_bond_members(links, index=link.index)]
+    recreated = False
+
     if current_members and config.members and current_members[0] != config.members[0]:
         delete_link(sock, index=link.index)
         create_bond(
@@ -95,6 +97,7 @@ def configure_bond(
         links[config.name] = get_link(sock, name=config.name)
         link = links[config.name]
         current_members = []
+        recreated = True
 
     # Update bond settings if changed
     needs_down = False
@@ -134,8 +137,9 @@ def configure_bond(
         set_link_up(sock, index=link.index)
         links[config.name] = get_link(sock, name=config.name)
 
-    # Update members
-    current_members = [m[0] for m in get_bond_members(links, index=link.index)]
+    if not recreated:
+        current_members = [m[0] for m in get_bond_members(links, index=link.index)]
+
     current_members_set = set(current_members)
     desired_members_set = set(config.members)
 
