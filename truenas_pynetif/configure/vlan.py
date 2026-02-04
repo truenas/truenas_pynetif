@@ -7,7 +7,12 @@ import socket
 from truenas_pynetif.address.vlan import create_vlan
 from truenas_pynetif.address.get_links import get_link, get_links
 from truenas_pynetif.address.link import delete_link, set_link_up, set_link_mtu
-from truenas_pynetif.netlink import LinkInfo, NetlinkError, ParentInterfaceNotFound
+from truenas_pynetif.netlink import (
+    DeviceNotFound,
+    LinkInfo,
+    NetlinkError,
+    ParentInterfaceNotFound,
+)
 
 __all__ = ("VlanConfig", "configure_vlan")
 
@@ -38,21 +43,18 @@ def configure_vlan(
     if links is None:
         links = get_links(sock)
 
-    # Verify parent interface exists
-    try:
-        parent_idx = socket.if_nametoindex(config.parent)
-    except OSError:
-        raise ParentInterfaceNotFound(config.parent)
-
-    # Get parent link to validate MTU
+    # Get parent link (verifies existence and provides index)
     parent_link = links.get(config.parent)
     if not parent_link:
-        parent_link = get_link(sock, name=config.parent)
-        links[config.parent] = parent_link
+        try:
+            parent_link = get_link(sock, name=config.parent)
+            links[config.parent] = parent_link
+        except DeviceNotFound:
+            raise ParentInterfaceNotFound(config.parent)
 
     # Try to create VLAN (avoid TOCTOU by catching EEXIST)
     try:
-        create_vlan(sock, config.name, config.tag, parent=config.parent)
+        create_vlan(sock, config.name, config.tag, parent_index=parent_link.index)
         links[config.name] = get_link(sock, name=config.name)
     except NetlinkError as e:
         if e.errno == errno.EEXIST:
@@ -63,9 +65,9 @@ def configure_vlan(
     link = links[config.name]
 
     # Check if parent or tag changed (requires recreation)
-    if link.vlan_parent != parent_idx or link.vlan_id != config.tag:
+    if link.vlan_parent != parent_link.index or link.vlan_id != config.tag:
         delete_link(sock, index=link.index)
-        create_vlan(sock, config.name, config.tag, parent=config.parent)
+        create_vlan(sock, config.name, config.tag, parent_index=parent_link.index)
         links[config.name] = get_link(sock, name=config.name)
         link = links[config.name]
 
