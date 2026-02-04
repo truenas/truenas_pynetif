@@ -7,6 +7,7 @@ __all__ = [
     "DumpInterrupted",
     "BondHasMembers",
     "InterfaceAlreadyExists",
+    "ParentInterfaceNotFound",
 ]
 
 
@@ -37,3 +38,10 @@ class InterfaceAlreadyExists(NetlinkError):
         super().__init__(f"Interface {name!r} already exists")
         self.errno = errno.EEXIST
         self.name = name
+
+
+class ParentInterfaceNotFound(NetlinkError):
+    def __init__(self, parent: str):
+        super().__init__(f"Parent interface {parent!r} not found")
+        self.errno = errno.ENOENT
+        self.parent = parent
