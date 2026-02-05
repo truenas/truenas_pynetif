@@ -2,6 +2,7 @@ import socket
 import struct
 
 from truenas_pynetif.address._link_helpers import _create_link, _resolve_index
+from truenas_pynetif.netlink.dataclass_types import LinkInfo
 from truenas_pynetif.address.constants import (
     AddressFamily,
     IFLAAttr,
@@ -26,6 +27,7 @@ __all__ = (
     "create_bridge",
     "bridge_add_member",
     "bridge_rem_member",
+    "get_bridge_members",
     "set_bridge_learning",
     "set_bridge_priority",
     "set_bridge_stp",
@@ -70,6 +72,30 @@ def create_bridge(
         elif members_index:
             for idx in members_index:
                 bridge_add_member(sock, index=idx, master_index=bridge_index)
+
+
+def get_bridge_members(
+    links: dict[str, LinkInfo],
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> tuple[tuple[str, int], ...]:
+    """Get the members of a bridge interface.
+
+    Args:
+        links: Link information dict from get_links()
+        name: Bridge interface name (mutually exclusive with index)
+        index: Bridge interface index (mutually exclusive with name)
+
+    Returns:
+        Tuple of (name, index) tuples for each member interface.
+    """
+    bridge_index = _resolve_index(name, index)
+    return tuple(
+        (ifname, info.index)
+        for ifname, info in links.items()
+        if info.master == bridge_index
+    )
 
 
 def bridge_add_member(
