@@ -9,6 +9,7 @@ from truenas_pynetif.address.bridge import (
     bridge_rem_member,
     create_bridge,
     get_bridge_members,
+    set_bridge_learning,
     set_bridge_priority,
     set_bridge_stp,
 )
@@ -26,6 +27,12 @@ class BridgeConfig:
     stp: bool = True
     priority: int = 32768
     mtu: int | None = None
+    enable_learning: bool = True
+    preserve_member_prefixes: tuple[str, ...] = ()
+    """Interfaces matching these prefixes will not be removed from the bridge
+    even if they are not in the members list. This is used for dynamically
+    attached interfaces like "vnet*" which libvirt creates when VMs start.
+    Removing these would disconnect the VM's network interface."""
 
 
 def configure_bridge(
@@ -68,6 +75,8 @@ def configure_bridge(
     desired_members_set = set(config.members)
 
     for member in current_members_set - desired_members_set:
+        if member.startswith(config.preserve_member_prefixes):
+            continue
         bridge_rem_member(sock, index=links[member].index)
 
     for member in desired_members_set - current_members_set:
@@ -77,8 +86,9 @@ def configure_bridge(
     if config.mtu and link.mtu != config.mtu:
         set_link_mtu(sock, config.mtu, index=link.index)
 
-    # Bring up all members
+    # Set learning and bring up all members
     for member in config.members:
+        set_bridge_learning(sock, config.enable_learning, index=links[member].index)
         set_link_up(sock, index=links[member].index)
 
     # Bring up bridge
