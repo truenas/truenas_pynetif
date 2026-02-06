@@ -39,6 +39,7 @@ class NLMsgFlags:
     MATCH = 0x200
     DUMP = ROOT | MATCH
     DUMP_INTR = 0x10
+    REPLACE = 0x100
 
 
 class NLMsgType:

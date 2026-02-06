@@ -5,12 +5,19 @@ from truenas_pynetif.address._link_helpers import _resolve_index, _set_link_flag
 from truenas_pynetif.address.constants import AddressFamily, IFFlags, IFLAAttr, RTMType
 from truenas_pynetif.netlink._core import (
     NLMsgFlags,
+    pack_nlattr_str,
     pack_nlattr_u32,
     pack_nlmsg,
     recv_msgs,
 )
 
-__all__ = ("set_link_up", "set_link_down", "set_link_mtu", "delete_link")
+__all__ = (
+    "set_link_up",
+    "set_link_down",
+    "set_link_mtu",
+    "set_link_alias",
+    "delete_link",
+)
 
 
 def set_link_up(
@@ -45,7 +52,38 @@ def set_link_mtu(
     index = _resolve_index(name, index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MTU, mtu)
-    msg = pack_nlmsg(RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_link_alias(
+    sock: socket.socket,
+    alias: str,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Set the alias (description) of a network interface.
+
+    The alias is a human-readable label for the interface, typically
+    displayed as "description" in network management interfaces. It is
+    stored in /sys/class/net/<ifname>/ifalias.
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        alias: Description/label for the interface (empty string to clear)
+        name: Interface name (mutually exclusive with index)
+        index: Interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+    attrs = pack_nlattr_str(IFLAAttr.IFALIAS, alias)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
     sock.send(msg)
     recv_msgs(sock)
 
