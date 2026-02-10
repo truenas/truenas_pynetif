@@ -4,7 +4,6 @@ from truenas_pynetif.address import AddressMixin
 from truenas_pynetif.bits import InterfaceFlags, InterfaceV6Flags
 from truenas_pynetif.lagg import LaggMixin
 from truenas_pynetif.utils import bitmask_to_set, INTERNAL_INTERFACES
-from truenas_pynetif.vrrp import VrrpMixin
 from truenas_pynetif.ethernet_settings import EthernetHardwareSettings
 
 __all__ = ["Interface", "CLONED_PREFIXES"]
@@ -15,7 +14,7 @@ __all__ = ["Interface", "CLONED_PREFIXES"]
 CLONED_PREFIXES = ("br", "vlan", "bond")
 
 
-class Interface(AddressMixin, LaggMixin, VrrpMixin):
+class Interface(AddressMixin, LaggMixin):
     def __init__(self, dev):
         self.name = dev.get_attr('IFLA_IFNAME')
         self._mtu = dev.get_attr('IFLA_MTU') or 0
