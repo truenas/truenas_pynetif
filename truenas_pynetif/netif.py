@@ -3,21 +3,12 @@ from pyroute2 import IPRoute, NetlinkDumpInterrupted
 
 from truenas_pynetif.address.netlink import netlink_route
 from truenas_pynetif.interface import Interface, CLONED_PREFIXES
-from truenas_pynetif.lagg import AggregationProtocol, create_lagg
 from truenas_pynetif.utils import run
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["AggregationProtocol", "create_interface", "destroy_interface", "netlink_route",
+__all__ = ["destroy_interface", "netlink_route",
            "get_interface", "list_interfaces", "CLONED_PREFIXES"]
-
-
-def create_interface(name):
-    if name.startswith("bond"):
-        create_lagg(name)
-        return name
-
-    raise ValueError(f"Invalid interface name: {name!r}")
 
 
 def destroy_interface(name):
