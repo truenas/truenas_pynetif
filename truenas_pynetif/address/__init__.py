@@ -1,4 +1,3 @@
-from truenas_pynetif.address.mixin import AddressMixin
 from truenas_pynetif.address.netlink import (
     AddressInfo,
     DeviceNotFound,
@@ -19,7 +18,6 @@ from truenas_pynetif.address.types import AddressFamily
 __all__ = [
     "AddressFamily",
     "AddressInfo",
-    "AddressMixin",
     "DeviceNotFound",
     "IFOperState",
     "LinkInfo",
