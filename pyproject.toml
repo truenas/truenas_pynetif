@@ -23,9 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = [
-    "pyroute2",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/truenas/truenas_pynetif"
@@ -57,10 +55,3 @@ exclude = [
 [tool.mypy]
 strict = true
 
-[[tool.mypy.overrides]]
-module = ["pyroute2", "pyroute2.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["truenas_pynetif.routing"]
-ignore_errors = true
