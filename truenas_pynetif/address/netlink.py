@@ -16,8 +16,10 @@ from truenas_pynetif.address.get_routes import (
     get_routes,
 )
 from truenas_pynetif.address.link import delete_link, set_link_down, set_link_mtu, set_link_up
+from truenas_pynetif.address.route import add_route, change_route, delete_route, flush_routes
+from truenas_pynetif.address.rule import add_rule, delete_rule, get_rules
 from truenas_pynetif.address.vlan import create_vlan
-from truenas_pynetif.netlink import AddressInfo, DeviceNotFound, LinkInfo, RouteInfo
+from truenas_pynetif.netlink import AddressInfo, DeviceNotFound, LinkInfo, RouteInfo, RuleInfo
 from truenas_pynetif.netlink._core import netlink_route
 
 __all__ = (
@@ -29,13 +31,20 @@ __all__ = (
     "IFOperState",
     "LinkInfo",
     "RouteInfo",
+    "RuleInfo",
+    "add_route",
+    "add_rule",
     "bond_add_member",
     "bridge_add_member",
+    "change_route",
     "create_bond",
     "create_bridge",
     "create_dummy",
     "create_vlan",
     "delete_link",
+    "delete_route",
+    "delete_rule",
+    "flush_routes",
     "get_addresses",
     "get_default_route",
     "get_link",
@@ -43,6 +52,7 @@ __all__ = (
     "get_link_routes",
     "get_links",
     "get_routes",
+    "get_rules",
     "link_exists",
     "netlink_route",
     "set_bridge_priority",

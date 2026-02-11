@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 
@@ -102,3 +104,20 @@ class RouteInfo:
     oif: int | None = None
     oif_name: str | None = None
     priority: int | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class RuleInfo:
+    """FIB rule information."""
+
+    family: int
+    src_len: int
+    dst_len: int
+    table: int
+    action: int
+    priority: int | None = None
+    src: str | None = None
+    dst: str | None = None
+    iifname: str | None = None
+    fwmark: int | None = None
+    protocol: int | None = None
