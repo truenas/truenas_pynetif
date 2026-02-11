@@ -62,7 +62,5 @@ module = ["pyroute2", "pyroute2.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["truenas_pynetif.address.mixin", "truenas_pynetif.bridge", "truenas_pynetif.interface",
-          "truenas_pynetif.lagg", "truenas_pynetif.netif", "truenas_pynetif.routing", "truenas_pynetif.vlan",
-          "truenas_pynetif.vrrp"]
+module = ["truenas_pynetif.routing"]
 ignore_errors = true
