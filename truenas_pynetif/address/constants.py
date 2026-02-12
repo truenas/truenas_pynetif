@@ -41,6 +41,9 @@ class RTMType(IntEnum):
     NEWROUTE = 24
     DELROUTE = 25
     GETROUTE = 26
+    NEWRULE = 32
+    DELRULE = 33
+    GETRULE = 34
 
 
 class AddressFamily(IntEnum):
@@ -404,3 +407,25 @@ class RTMFlags(IntFlag):
     OFFLOAD = 0x4000
     TRAP = 0x8000
     OFFLOAD_FAILED = 0x20000000
+
+
+class FRAAttr(IntEnum):
+    """FIB rule attributes (FRA_*)"""
+
+    UNSPEC = 0
+    DST = 1
+    SRC = 2
+    IIFNAME = 3
+    GOTO = 4
+    PRIORITY = 6
+    FWMARK = 10
+    TABLE = 15
+    PROTOCOL = 21
+
+
+class FRAction(IntEnum):
+    """FIB rule action types"""
+
+    TO_TBL = 1
+    GOTO = 2
+    NOP = 3
