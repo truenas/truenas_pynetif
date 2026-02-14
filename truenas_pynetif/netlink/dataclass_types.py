@@ -121,3 +121,20 @@ class RuleInfo:
     iifname: str | None = None
     fwmark: int | None = None
     protocol: int | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class InetDiagSockInfo:
+    """Inet socket diagnostic information obtained from NETLINK_SOCK_DIAG.
+
+    Represents a single IPv4 or IPv6 socket entry from the kernel's
+    socket table, including connection endpoints and ownership."""
+
+    family: int
+    state: int
+    src: str
+    sport: int
+    dst: str
+    dport: int
+    uid: int
+    inode: int
