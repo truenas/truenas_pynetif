@@ -13,6 +13,7 @@ NETLINK_SOCK_DIAG = 4
 SOCK_DIAG_BY_FAMILY = 20
 
 
+# TCP socket states from include/net/tcp_states.h (enum tcp_state)
 class SockState(IntEnum):
     UNKNOWN = 0
     ESTABLISHED = 1
