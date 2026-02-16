@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import errno
 
 __all__ = [
+    "AddressAlreadyExists",
+    "AddressDoesNotExist",
     "NetlinkError",
     "DeviceNotFound",
     "OperationNotSupported",
@@ -51,9 +55,25 @@ class ParentInterfaceNotFound(NetlinkError):
 
 class RouteAlreadyExists(NetlinkError):
     def __init__(self) -> None:
-        super().__init__("Route already exists", error_code=errno.EEXIST)
+        super().__init__("Route already exists")
+        self.errno = errno.EEXIST
 
 
 class RouteDoesNotExist(NetlinkError):
     def __init__(self) -> None:
-        super().__init__("Route does not exist", error_code=errno.ESRCH)
+        super().__init__("Route does not exist")
+        self.errno = errno.ESRCH
+
+
+class AddressAlreadyExists(NetlinkError):
+    def __init__(self, address: str):
+        super().__init__(f"Address {address!r} already exists on interface")
+        self.errno = errno.EEXIST
+        self.address = address
+
+
+class AddressDoesNotExist(NetlinkError):
+    def __init__(self, address: str):
+        super().__init__(f"Address {address!r} does not exist on interface")
+        self.errno = errno.EADDRNOTAVAIL
+        self.address = address
