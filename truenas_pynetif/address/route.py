@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import ipaddress
 import socket
 import struct
@@ -40,7 +41,7 @@ def _build_route_msg(
     table: int,
     protocol: int,
     scope: int | None,
-    route_type: int,
+    route_type: RTNType,
     prefsrc: str | None,
     priority: int | None,
 ) -> bytes:
@@ -121,7 +122,7 @@ def add_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
-    route_type: int = RTNType.UNICAST,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -171,7 +172,7 @@ def add_route(
     try:
         recv_msgs(sock)
     except NetlinkError as e:
-        if e.errno == 17:  # EEXIST
+        if e.errno == errno.EEXIST:
             raise RouteAlreadyExists() from e
         raise
 
@@ -187,7 +188,7 @@ def change_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
-    route_type: int = RTNType.UNICAST,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -229,7 +230,7 @@ def delete_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
-    route_type: int = RTNType.UNICAST,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -263,7 +264,7 @@ def delete_route(
     try:
         recv_msgs(sock)
     except NetlinkError as e:
-        if e.errno == 3:  # ESRCH
+        if e.errno == errno.ESRCH:
             raise RouteDoesNotExist() from e
         raise
 
