@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import ipaddress
 import socket
 import struct
@@ -21,6 +22,11 @@ from truenas_pynetif.netlink._core import (
     pack_nlmsg,
     recv_msgs,
 )
+from truenas_pynetif.netlink._exceptions import (
+    NetlinkError,
+    RouteAlreadyExists,
+    RouteDoesNotExist,
+)
 
 __all__ = ("add_route", "change_route", "delete_route", "flush_routes")
 
@@ -35,6 +41,7 @@ def _build_route_msg(
     table: int,
     protocol: int,
     scope: int | None,
+    route_type: RTNType,
     prefsrc: str | None,
     priority: int | None,
 ) -> bytes:
@@ -60,7 +67,9 @@ def _build_route_msg(
         family = AddressFamily.INET6
 
     if scope is None:
-        if gw_obj:
+        if route_type in (RTNType.BLACKHOLE, RTNType.UNREACHABLE, RTNType.PROHIBIT):
+            scope = RTScope.UNIVERSE
+        elif gw_obj:
             scope = RTScope.UNIVERSE
         else:
             scope = RTScope.LINK
@@ -74,7 +83,7 @@ def _build_route_msg(
         RTTable.UNSPEC,
         protocol,
         scope,
-        RTNType.UNICAST,
+        route_type,
         0,
     )
 
@@ -113,6 +122,7 @@ def add_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -132,6 +142,7 @@ def add_route(
         table: Routing table ID (default: MAIN=254)
         protocol: Route origin marker (default: STATIC)
         scope: Route scope. Auto-detected if None.
+        route_type: Route type (default: UNICAST).
         prefsrc: Preferred source address for this route
         priority: Route priority/metric
 
@@ -148,6 +159,7 @@ def add_route(
         table=table,
         protocol=protocol,
         scope=scope,
+        route_type=route_type,
         prefsrc=prefsrc,
         priority=priority,
     )
@@ -157,7 +169,12 @@ def add_route(
         payload,
     )
     sock.send(msg)
-    recv_msgs(sock)
+    try:
+        recv_msgs(sock)
+    except NetlinkError as e:
+        if e.errno == errno.EEXIST:
+            raise RouteAlreadyExists() from e
+        raise
 
 
 def change_route(
@@ -171,6 +188,7 @@ def change_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -188,6 +206,7 @@ def change_route(
         table=table,
         protocol=protocol,
         scope=scope,
+        route_type=route_type,
         prefsrc=prefsrc,
         priority=priority,
     )
@@ -211,6 +230,7 @@ def delete_route(
     table: int = RTTable.MAIN,
     protocol: int = RTProtocol.STATIC,
     scope: int | None = None,
+    route_type: RTNType = RTNType.UNICAST,
     prefsrc: str | None = None,
     priority: int | None = None,
 ) -> None:
@@ -220,7 +240,7 @@ def delete_route(
     output interface, and table. Takes the same arguments as add_route.
 
     Raises:
-        NetlinkError: If the route does not exist (errno 3 ESRCH)
+        RouteDoesNotExist: If the route does not exist
     """
     payload = _build_route_msg(
         dst,
@@ -231,6 +251,7 @@ def delete_route(
         table=table,
         protocol=protocol,
         scope=scope,
+        route_type=route_type,
         prefsrc=prefsrc,
         priority=priority,
     )
@@ -240,7 +261,12 @@ def delete_route(
         payload,
     )
     sock.send(msg)
-    recv_msgs(sock)
+    try:
+        recv_msgs(sock)
+    except NetlinkError as e:
+        if e.errno == errno.ESRCH:
+            raise RouteDoesNotExist() from e
+        raise
 
 
 def flush_routes(sock: socket.socket, table: int) -> None:

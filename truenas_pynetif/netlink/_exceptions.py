@@ -8,6 +8,8 @@ __all__ = [
     "BondHasMembers",
     "InterfaceAlreadyExists",
     "ParentInterfaceNotFound",
+    "RouteAlreadyExists",
+    "RouteDoesNotExist",
 ]
 
 
@@ -45,3 +47,13 @@ class ParentInterfaceNotFound(NetlinkError):
         super().__init__(f"Parent interface {parent!r} not found")
         self.errno = errno.ENOENT
         self.parent = parent
+
+
+class RouteAlreadyExists(NetlinkError):
+    def __init__(self) -> None:
+        super().__init__("Route already exists", error_code=errno.EEXIST)
+
+
+class RouteDoesNotExist(NetlinkError):
+    def __init__(self) -> None:
+        super().__init__("Route does not exist", error_code=errno.ESRCH)
