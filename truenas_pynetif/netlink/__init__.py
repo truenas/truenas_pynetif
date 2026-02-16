@@ -1,4 +1,10 @@
-from truenas_pynetif.netlink.dataclass_types import AddressInfo, LinkInfo, RouteInfo, RuleInfo
+from truenas_pynetif.netlink.dataclass_types import (
+    AddressInfo,
+    InetDiagSockInfo,
+    LinkInfo,
+    RouteInfo,
+    RuleInfo,
+)
 from truenas_pynetif.netlink._core import netlink_route, netlink_generic
 from truenas_pynetif.netlink._exceptions import (
     BondHasMembers,
@@ -13,6 +19,7 @@ from truenas_pynetif.netlink._exceptions import (
 __all__ = (
     "AddressInfo",
     "BondHasMembers",
+    "InetDiagSockInfo",
     "DeviceNotFound",
     "DumpInterrupted",
     "InterfaceAlreadyExists",
