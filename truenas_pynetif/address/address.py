@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import errno
 import ipaddress
 import socket
 import struct
@@ -15,6 +18,11 @@ from truenas_pynetif.netlink._core import (
     pack_nlattr,
     pack_nlmsg,
     recv_msgs,
+)
+from truenas_pynetif.netlink._exceptions import (
+    AddressAlreadyExists,
+    AddressDoesNotExist,
+    NetlinkError,
 )
 
 __all__ = ("add_address", "remove_address", "replace_address", "flush_addresses")
@@ -92,7 +100,12 @@ def add_address(
         ifaddrmsg + attrs,
     )
     sock.send(msg)
-    recv_msgs(sock)
+    try:
+        recv_msgs(sock)
+    except NetlinkError as e:
+        if e.errno == errno.EEXIST:
+            raise AddressAlreadyExists(address) from e
+        raise
 
 
 def remove_address(
@@ -130,7 +143,12 @@ def remove_address(
         ifaddrmsg + attrs,
     )
     sock.send(msg)
-    recv_msgs(sock)
+    try:
+        recv_msgs(sock)
+    except NetlinkError as e:
+        if e.errno == errno.EADDRNOTAVAIL:
+            raise AddressDoesNotExist(address) from e
+        raise
 
 
 def replace_address(

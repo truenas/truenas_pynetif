@@ -7,6 +7,8 @@ from truenas_pynetif.netlink.dataclass_types import (
 )
 from truenas_pynetif.netlink._core import netlink_route, netlink_generic
 from truenas_pynetif.netlink._exceptions import (
+    AddressAlreadyExists,
+    AddressDoesNotExist,
     BondHasMembers,
     DeviceNotFound,
     DumpInterrupted,
@@ -19,6 +21,8 @@ from truenas_pynetif.netlink._exceptions import (
 )
 
 __all__ = (
+    "AddressAlreadyExists",
+    "AddressDoesNotExist",
     "AddressInfo",
     "BondHasMembers",
     "InetDiagSockInfo",
