@@ -14,6 +14,8 @@ from truenas_pynetif.netlink._exceptions import (
     NetlinkError,
     OperationNotSupported,
     ParentInterfaceNotFound,
+    RouteAlreadyExists,
+    RouteDoesNotExist,
 )
 
 __all__ = (
@@ -27,6 +29,8 @@ __all__ = (
     "NetlinkError",
     "OperationNotSupported",
     "ParentInterfaceNotFound",
+    "RouteAlreadyExists",
+    "RouteDoesNotExist",
     "RouteInfo",
     "RuleInfo",
     "netlink_generic",
