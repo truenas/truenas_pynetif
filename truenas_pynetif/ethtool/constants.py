@@ -34,6 +34,7 @@ class EthtoolMsg(IntEnum):
     LINKMODES_GET = 4
     LINKSTATE_GET = 6
     FEATURES_GET = 11
+    FEC_GET = 17
 
 
 class EthtoolAHeader(IntEnum):
@@ -101,6 +102,12 @@ class EthtoolAStrings(IntEnum):
 class EthtoolAString(IntEnum):
     INDEX = 1
     VALUE = 2
+
+
+class EthtoolAFec(IntEnum):
+    MODES = 2
+    AUTO = 3
+    ACTIVE = 4
 
 
 class EthSS(IntEnum):

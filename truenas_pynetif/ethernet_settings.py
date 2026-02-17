@@ -24,6 +24,7 @@ class EthernetHardwareSettings:
         self._name = interface
         self._caps = self.__capabilities__()
         self._media = self.__mediainfo__()
+        self._fec = self.__fec_mode__()
 
     def __capabilities__(self) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {'enabled': [], 'disabled': [], 'supported': []}
@@ -143,6 +144,21 @@ class EthernetHardwareSettings:
     @property
     def supported_media(self) -> list[str]:
         return self._media['supported_media']
+
+    def __fec_mode__(self) -> str | None:
+        """Get current FEC mode."""
+        try:
+            eth = get_ethtool()
+            return eth.get_fec(self._name)
+        except (OperationNotSupported, DeviceNotFound):
+            pass
+        except Exception:
+            logger.error('Failed to get FEC mode for %s', self._name, exc_info=True)
+        return None
+
+    @property
+    def fec_mode(self) -> str | None:
+        return self._fec
 
     def close(self) -> None:
         pass
