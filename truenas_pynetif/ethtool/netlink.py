@@ -17,6 +17,7 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolABitset,
     EthtoolABitsetBit,
     EthtoolABitsetBits,
+    EthtoolAFec,
     EthtoolAFeatures,
     EthtoolAHeader,
     EthtoolALinkinfo,
@@ -38,6 +39,7 @@ __all__ = [
     "Duplex",
     "EthtoolNetlink",
     "FeaturesInfo",
+    "FecMode",
     "LinkInfo",
     "LinkModesInfo",
     "NetlinkError",
@@ -111,6 +113,15 @@ class Duplex(IntEnum):
 class Transceiver(IntEnum):
     INTERNAL = 0
     EXTERNAL = 1
+
+
+class FecMode(IntEnum):
+    """FEC (Forward Error Correction) modes as bit flags."""
+    NONE = 0x01
+    AUTO = 0x02
+    OFF = 0x04
+    RS = 0x08
+    BASER = 0x10
 
 
 @dataclass(slots=True)
@@ -358,6 +369,45 @@ class EthtoolNetlink:
                 if EthtoolALinkinfo.PHYADDR in attrs:
                     result["phyaddr"] = attrs[EthtoolALinkinfo.PHYADDR][0]
         return result
+
+    def get_fec(self, ifname: str) -> str | None:
+        """
+        Get the active FEC (Forward Error Correction) mode for an interface.
+
+        Returns one of: "AUTO", "OFF", "RS", "BASER", "NONE", or None if unsupported.
+        """
+        header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        try:
+            self._sock.send(msg)
+        except OSError:
+            # Interface might not support FEC
+            return None
+
+        active_fec = None
+        for msg_type, payload in self._recv_msgs():
+            if msg_type == self._family_id:
+                attrs = self._parse_attrs(payload, 4)
+                # Parse FEC ACTIVE attribute
+                if EthtoolAFec.ACTIVE in attrs:
+                    fec_bits = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
+                    # Map bit flags to mode names
+                    if fec_bits & FecMode.AUTO:
+                        active_fec = "AUTO"
+                    elif fec_bits & FecMode.OFF:
+                        active_fec = "OFF"
+                    elif fec_bits & FecMode.RS:
+                        active_fec = "RS"
+                    elif fec_bits & FecMode.BASER:
+                        active_fec = "BASER"
+                    elif fec_bits & FecMode.NONE:
+                        active_fec = "NONE"
+        return active_fec
 
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)

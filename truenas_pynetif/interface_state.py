@@ -130,7 +130,7 @@ class InterfaceState:
             "tx_queues": link.num_tx_queues,
         }
 
-        # Add ethtool info (capabilities, media)
+        # Add ethtool info (capabilities, media, FEC)
         with EthernetHardwareSettings(self.name) as dev:
             state.update(
                 {
@@ -140,6 +140,7 @@ class InterfaceState:
                     "media_subtype": dev.media_subtype,
                     "active_media_type": dev.active_media_type,
                     "active_media_subtype": dev.active_media_subtype,
+                    "fec_mode": dev.fec_mode,
                 }
             )
 
