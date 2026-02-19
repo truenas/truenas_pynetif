@@ -34,7 +34,8 @@ class EthtoolMsg(IntEnum):
     LINKMODES_GET = 4
     LINKSTATE_GET = 6
     FEATURES_GET = 11
-    FEC_GET = 17
+    FEC_GET = 29
+    FEC_SET = 30
 
 
 class EthtoolAHeader(IntEnum):
