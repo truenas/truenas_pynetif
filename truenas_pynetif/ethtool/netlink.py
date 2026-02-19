@@ -411,19 +411,23 @@ class EthtoolNetlink:
         is_auto = False
         active_fec = None
         for msg_type, payload in self._recv_msgs():
-            if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
-                if EthtoolAFec.AUTO in attrs:
-                    is_auto = attrs[EthtoolAFec.AUTO][0] != 0
-                if EthtoolAFec.ACTIVE in attrs:
-                    # ACTIVE is a link mode bit index, not a bitmask
-                    link_mode_bit = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
-                    try:
-                        active_fec = FecMode(link_mode_bit).name
-                    except ValueError:
-                        pass
+            if msg_type != self._family_id:
+                continue
+
+            attrs = self._parse_attrs(payload, 4)
+            if EthtoolAFec.AUTO in attrs:
+                is_auto = attrs[EthtoolAFec.AUTO][0] != 0
+            if EthtoolAFec.ACTIVE in attrs:
+                # ACTIVE is a link mode bit index, not a bitmask
+                link_mode_bit = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
+                try:
+                    active_fec = FecMode(link_mode_bit).name
+                except ValueError:
+                    pass
+
         if is_auto:
             return "AUTO"
+
         return active_fec
 
     def set_fec(self, ifname: str, mode: FecModeName) -> None:
@@ -447,6 +451,7 @@ class EthtoolNetlink:
                 fec_mode = FecMode[mode]
             except KeyError:
                 raise ValueError(f"Invalid FEC mode: {mode!r}")
+
             all_fec_bits = [m.value for m in FecMode]
             bitset_size = max(all_fec_bits) + 1
             bitset = self._pack_compact_bitset([fec_mode.value], all_fec_bits, bitset_size)
@@ -470,26 +475,32 @@ class EthtoolNetlink:
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
         if self._sock is None:
             raise NetlinkError("Socket not connected")
+
         try:
             self._sock.send(msg)
         except OSError:
             return []
+
         modes: list[FecModeName] = []
         try:
             for msg_type, payload in self._recv_msgs():
-                if msg_type == self._family_id:
-                    attrs = self._parse_attrs(payload, 4)
-                    if EthtoolAFec.AUTO in attrs and attrs[EthtoolAFec.AUTO][0] != 0:
-                        modes.append("AUTO")
-                    if EthtoolAFec.MODES in attrs:
-                        _, value_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
-                        for bit in sorted(value_bits):
-                            try:
-                                modes.append(FecMode(bit).name)
-                            except ValueError:
-                                pass
+                if msg_type != self._family_id:
+                    continue
+
+                attrs = self._parse_attrs(payload, 4)
+                if EthtoolAFec.AUTO in attrs and attrs[EthtoolAFec.AUTO][0] != 0:
+                    modes.append("AUTO")
+                if EthtoolAFec.MODES in attrs:
+                    _, value_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
+                    for bit in sorted(value_bits):
+                        try:
+                            modes.append(FecMode(bit).name)
+                        except ValueError:
+                            pass
+
         except (DeviceNotFound, OperationNotSupported):
             return []
+
         return modes
 
     def get_link_state(self, ifname: str) -> bool:
