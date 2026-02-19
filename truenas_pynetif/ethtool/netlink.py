@@ -115,13 +115,14 @@ class Transceiver(IntEnum):
     EXTERNAL = 1
 
 
+# ETHTOOL_A_FEC_ACTIVE carries a link mode bit index, not a bitmask.
+# These are ETHTOOL_LINK_MODE_FEC_*_BIT values from ethtool_link_mode_bit_indices.
 class FecMode(IntEnum):
-    """FEC (Forward Error Correction) modes as bit flags."""
-    NONE = 0x01
-    AUTO = 0x02
-    OFF = 0x04
-    RS = 0x08
-    BASER = 0x10
+    """FEC link mode bit indices as reported by ETHTOOL_A_FEC_ACTIVE."""
+    OFF = 49     # ETHTOOL_LINK_MODE_FEC_NONE_BIT
+    RS = 50      # ETHTOOL_LINK_MODE_FEC_RS_BIT
+    BASER = 51   # ETHTOOL_LINK_MODE_FEC_BASER_BIT
+    LLRS = 74    # ETHTOOL_LINK_MODE_FEC_LLRS_BIT
 
 
 @dataclass(slots=True)
@@ -374,7 +375,9 @@ class EthtoolNetlink:
         """
         Get the active FEC (Forward Error Correction) mode for an interface.
 
-        Returns one of: "AUTO", "OFF", "RS", "BASER", "NONE", or None if unsupported.
+        Returns one of: "AUTO", "OFF", "RS", "BASER", "LLRS", or None if unsupported.
+        ETHTOOL_A_FEC_AUTO indicates the driver auto-selects the mode; when set,
+        "AUTO" is returned regardless of the actual active encoding.
         """
         header = self._make_header(ifname)
         if self._family_id is None:
@@ -389,24 +392,22 @@ class EthtoolNetlink:
             # Interface might not support FEC
             return None
 
+        is_auto = False
         active_fec = None
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
                 attrs = self._parse_attrs(payload, 4)
-                # Parse FEC ACTIVE attribute
+                if EthtoolAFec.AUTO in attrs:
+                    is_auto = attrs[EthtoolAFec.AUTO][0] != 0
                 if EthtoolAFec.ACTIVE in attrs:
-                    fec_bits = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
-                    # Map bit flags to mode names
-                    if fec_bits & FecMode.AUTO:
-                        active_fec = "AUTO"
-                    elif fec_bits & FecMode.OFF:
-                        active_fec = "OFF"
-                    elif fec_bits & FecMode.RS:
-                        active_fec = "RS"
-                    elif fec_bits & FecMode.BASER:
-                        active_fec = "BASER"
-                    elif fec_bits & FecMode.NONE:
-                        active_fec = "NONE"
+                    # ACTIVE is a link mode bit index, not a bitmask
+                    link_mode_bit = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
+                    try:
+                        active_fec = FecMode(link_mode_bit).name
+                    except ValueError:
+                        pass
+        if is_auto:
+            return "AUTO"
         return active_fec
 
     def get_link_state(self, ifname: str) -> bool:
