@@ -458,6 +458,40 @@ class EthtoolNetlink:
         self._sock.send(msg)
         self._recv_msgs()
 
+    def get_fec_modes(self, ifname: str) -> list[FecModeName]:
+        """Return FEC modes supported by the interface.
+
+        Returns an empty list if the interface does not support FEC.
+        AUTO is included when the interface reports support for automatic FEC selection.
+        """
+        header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+        try:
+            self._sock.send(msg)
+        except OSError:
+            return []
+        modes: list[FecModeName] = []
+        try:
+            for msg_type, payload in self._recv_msgs():
+                if msg_type == self._family_id:
+                    attrs = self._parse_attrs(payload, 4)
+                    if EthtoolAFec.AUTO in attrs and attrs[EthtoolAFec.AUTO][0] != 0:
+                        modes.append("AUTO")
+                    if EthtoolAFec.MODES in attrs:
+                        _, value_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
+                        for bit in sorted(value_bits):
+                            try:
+                                modes.append(FecMode(bit).name)
+                            except ValueError:
+                                pass
+        except (DeviceNotFound, OperationNotSupported):
+            return []
+        return modes
+
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)
         if self._family_id is None:
