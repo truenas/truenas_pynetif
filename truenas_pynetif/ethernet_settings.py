@@ -2,7 +2,7 @@ from logging import getLogger
 import subprocess
 from typing import Self, TypedDict
 
-from truenas_pynetif.ethtool import DeviceNotFound, OperationNotSupported, get_ethtool
+from truenas_pynetif.ethtool import DeviceNotFound, OperationNotSupported, FecModeName, get_ethtool
 from truenas_pynetif.utils import run
 
 
@@ -24,7 +24,7 @@ class EthernetHardwareSettings:
         self._name = interface
         self._caps = self.__capabilities__()
         self._media = self.__mediainfo__()
-        self._fec = self.__fec_mode__()
+        self._fec: FecModeName | None = self.__fec_mode__()
 
     def __capabilities__(self) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {'enabled': [], 'disabled': [], 'supported': []}
@@ -145,7 +145,7 @@ class EthernetHardwareSettings:
     def supported_media(self) -> list[str]:
         return self._media['supported_media']
 
-    def __fec_mode__(self) -> str | None:
+    def __fec_mode__(self) -> FecModeName | None:
         """Get current FEC mode."""
         try:
             eth = get_ethtool()
@@ -157,7 +157,7 @@ class EthernetHardwareSettings:
         return None
 
     @property
-    def fec_mode(self) -> str | None:
+    def fec_mode(self) -> FecModeName | None:
         return self._fec
 
     def close(self) -> None:

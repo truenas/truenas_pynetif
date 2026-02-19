@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import IntEnum
 from types import MappingProxyType
-from typing import Self, TypedDict
+from typing import Iterable, Literal, Self, TypedDict
 
 from truenas_pynetif.ethtool.constants import (
     GENL_ID_CTRL,
@@ -40,6 +40,7 @@ __all__ = [
     "EthtoolNetlink",
     "FeaturesInfo",
     "FecMode",
+    "FecModeName",
     "LinkInfo",
     "LinkModesInfo",
     "NetlinkError",
@@ -50,6 +51,9 @@ __all__ = [
     "close_ethtool",
     "get_ethtool",
 ]
+
+
+FecModeName = Literal["AUTO", "OFF", "RS", "BASER", "LLRS"]
 
 
 class LinkModesInfo(TypedDict):
@@ -115,7 +119,6 @@ class Transceiver(IntEnum):
     EXTERNAL = 1
 
 
-# ETHTOOL_A_FEC_ACTIVE carries a link mode bit index, not a bitmask.
 # These are ETHTOOL_LINK_MODE_FEC_*_BIT values from ethtool_link_mode_bit_indices.
 class FecMode(IntEnum):
     """FEC link mode bit indices as reported by ETHTOOL_A_FEC_ACTIVE."""
@@ -256,7 +259,7 @@ class EthtoolNetlink:
             name_attr += self._pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
         return self._pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
 
-    def _pack_compact_bitset(self, value_bits: set[int], mask_bits: set[int], size: int) -> bytes:
+    def _pack_compact_bitset(self, value_bits: Iterable[int], mask_bits: Iterable[int], size: int) -> bytes:
         byte_count = (size + 7) // 8
         value_bytes = bytearray(byte_count)
         mask_bytes = bytearray(byte_count)
@@ -384,7 +387,7 @@ class EthtoolNetlink:
                     result["phyaddr"] = attrs[EthtoolALinkinfo.PHYADDR][0]
         return result
 
-    def get_fec(self, ifname: str) -> str | None:
+    def get_fec(self, ifname: str) -> FecModeName | None:
         """
         Get the active FEC (Forward Error Correction) mode for an interface.
 
@@ -423,7 +426,7 @@ class EthtoolNetlink:
             return "AUTO"
         return active_fec
 
-    def set_fec(self, ifname: str, mode: str) -> None:
+    def set_fec(self, ifname: str, mode: FecModeName) -> None:
         """
         Set the FEC mode for an interface.
 
@@ -444,9 +447,9 @@ class EthtoolNetlink:
                 fec_mode = FecMode[mode]
             except KeyError:
                 raise ValueError(f"Invalid FEC mode: {mode!r}")
-            all_fec_bits = {m.value for m in FecMode}
+            all_fec_bits = [m.value for m in FecMode]
             bitset_size = max(all_fec_bits) + 1
-            bitset = self._pack_compact_bitset({fec_mode.value}, all_fec_bits, bitset_size)
+            bitset = self._pack_compact_bitset([fec_mode.value], all_fec_bits, bitset_size)
             modes = self._pack_nlattr_nested(EthtoolAFec.MODES, bitset)
             fec_auto = self._pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 0))
             attrs = header + modes + fec_auto
