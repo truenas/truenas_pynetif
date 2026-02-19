@@ -256,6 +256,19 @@ class EthtoolNetlink:
             name_attr += self._pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
         return self._pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
 
+    def _pack_compact_bitset(self, value_bits: set[int], mask_bits: set[int], size: int) -> bytes:
+        byte_count = (size + 7) // 8
+        value_bytes = bytearray(byte_count)
+        mask_bytes = bytearray(byte_count)
+        for bit in value_bits:
+            value_bytes[bit // 8] |= 1 << (bit % 8)
+        for bit in mask_bits:
+            mask_bytes[bit // 8] |= 1 << (bit % 8)
+        result = self._pack_nlattr_u32(EthtoolABitset.SIZE, size)
+        result += self._pack_nlattr(EthtoolABitset.VALUE, bytes(value_bytes))
+        result += self._pack_nlattr(EthtoolABitset.MASK, bytes(mask_bytes))
+        return result
+
     def _parse_bitset(self, data: bytes) -> tuple[int, set[int], set[int]]:
         attrs = self._parse_nested_attrs(data)
         size = 0
@@ -409,6 +422,38 @@ class EthtoolNetlink:
         if is_auto:
             return "AUTO"
         return active_fec
+
+    def set_fec(self, ifname: str, mode: str) -> None:
+        """
+        Set the FEC mode for an interface.
+
+        mode must be one of: "AUTO", "OFF", "RS", "BASER", "LLRS"
+        """
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        header = self._make_header(ifname)
+
+        if mode == "AUTO":
+            fec_auto = self._pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 1))
+            attrs = header + fec_auto
+        else:
+            try:
+                fec_mode = FecMode[mode]
+            except KeyError:
+                raise ValueError(f"Invalid FEC mode: {mode!r}")
+            all_fec_bits = {m.value for m in FecMode}
+            bitset_size = max(all_fec_bits) + 1
+            bitset = self._pack_compact_bitset({fec_mode.value}, all_fec_bits, bitset_size)
+            modes = self._pack_nlattr_nested(EthtoolAFec.MODES, bitset)
+            fec_auto = self._pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 0))
+            attrs = header + modes + fec_auto
+
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_SET, 1, attrs)
+        self._sock.send(msg)
+        self._recv_msgs()
 
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)
