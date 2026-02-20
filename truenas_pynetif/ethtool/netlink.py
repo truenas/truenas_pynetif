@@ -31,7 +31,7 @@ from truenas_pynetif.ethtool.constants import (
     NLMsgFlags,
     NLMsgType,
 )
-from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink import DeviceNotFound, DumpInterrupted, NetlinkError, OperationNotSupported
 
 __all__ = [
     "DeviceNotFound",
@@ -197,6 +197,8 @@ class EthtoolNetlink:
                                 raise DeviceNotFound("No such device")
                             elif error == 95:
                                 raise OperationNotSupported("Operation not supported")
+                            elif error == 16:  # EBUSY
+                                raise DumpInterrupted("Netlink socket busy")
                             raise NetlinkError(f"Netlink error: {error}")
                     done = True
                 elif nlmsg_type == 0x03:
