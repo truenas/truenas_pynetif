@@ -10,7 +10,6 @@ from typing import Self, TypedDict
 from truenas_pynetif.ethtool.constants import (
     GENL_ID_CTRL,
     NETLINK_GENERIC,
-    NLA_F_NESTED,
     CtrlAttr,
     CtrlCmd,
     EthSS,
@@ -28,10 +27,16 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolAStrings,
     EthtoolAStrset,
     EthtoolMsg,
-    NLMsgFlags,
-    NLMsgType,
 )
-from truenas_pynetif.netlink import DeviceNotFound, DumpInterrupted, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink._core import (
+    pack_genlmsg,
+    pack_nlattr_nested,
+    pack_nlattr_str,
+    pack_nlattr_u32,
+    parse_attrs,
+    recv_msgs,
+)
 
 __all__ = [
     "DeviceNotFound",
@@ -147,107 +152,36 @@ class EthtoolNetlink:
         self._seq += 1
         return self._seq
 
-    def _pack_nlattr(self, attr_type: int, data: bytes) -> bytes:
-        nla_len = 4 + len(data)
-        padded_len = (nla_len + 3) & ~3
-        padding = padded_len - nla_len
-        return struct.pack("HH", nla_len, attr_type) + data + b"\x00" * padding
-
-    def _pack_nlattr_str(self, attr_type: int, s: str) -> bytes:
-        return self._pack_nlattr(attr_type, s.encode() + b"\x00")
-
-    def _pack_nlattr_u32(self, attr_type: int, val: int) -> bytes:
-        return self._pack_nlattr(attr_type, struct.pack("I", val))
-
-    def _pack_nlattr_nested(self, attr_type: int, attrs: bytes) -> bytes:
-        return self._pack_nlattr(attr_type | NLA_F_NESTED, attrs)
-
-    def _pack_nlmsg(self, msg_type: int, flags: int, payload: bytes) -> bytes:
-        seq = self._next_seq()
-        nlmsg_len = 16 + len(payload)
-        return struct.pack("IHHII", nlmsg_len, msg_type, flags, seq, 0) + payload
-
     def _pack_genlmsg(self, family_id: int, cmd: int, version: int, attrs: bytes) -> bytes:
-        genlhdr = struct.pack("BBH", cmd, version, 0)
-        payload = genlhdr + attrs
-        return self._pack_nlmsg(family_id, NLMsgFlags.REQUEST | NLMsgFlags.ACK, payload)
+        return pack_genlmsg(family_id, cmd, version, attrs, seq=self._next_seq())
 
     def _recv_msgs(self) -> list[tuple[int, bytes]]:
-        messages = []
-        while True:
-            if self._sock is None:
-                raise NetlinkError("Socket not connected")
-            data = self._sock.recv(65536)
-            offset = 0
-            done = False
-            while offset < len(data):
-                if offset + 16 > len(data):
-                    break
-                nlmsg_len, nlmsg_type, nlmsg_flags, nlmsg_seq, nlmsg_pid = (
-                    struct.unpack_from("IHHII", data, offset)
-                )
-                if nlmsg_len < 16:
-                    break
-                if nlmsg_type == NLMsgType.ERROR:
-                    if offset + 20 <= len(data):
-                        error = struct.unpack_from("i", data, offset + 16)[0]
-                        if error < 0:
-                            error = -error
-                            if error == 19:
-                                raise DeviceNotFound("No such device")
-                            elif error == 95:
-                                raise OperationNotSupported("Operation not supported")
-                            elif error == 16:  # EBUSY
-                                raise DumpInterrupted("Netlink socket busy")
-                            raise NetlinkError(f"Netlink error: {error}")
-                    done = True
-                elif nlmsg_type == 0x03:
-                    done = True
-                else:
-                    payload = data[offset + 16 : offset + nlmsg_len]
-                    messages.append((nlmsg_type, payload))
-                offset += (nlmsg_len + 3) & ~3
-            if done:
-                break
-        return messages
-
-    def _parse_attrs(self, data: bytes, offset: int = 0) -> dict[int, bytes]:
-        attrs = {}
-        while offset + 4 <= len(data):
-            nla_len, nla_type = struct.unpack_from("HH", data, offset)
-            if nla_len < 4:
-                break
-            nla_type_base = nla_type & 0x7FFF
-            attr_data = data[offset + 4 : offset + nla_len]
-            attrs[nla_type_base] = attr_data
-            offset += (nla_len + 3) & ~3
-        return attrs
-
-    def _parse_nested_attrs(self, data: bytes) -> dict[int, bytes]:
-        return self._parse_attrs(data, 0)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+        return recv_msgs(self._sock)
 
     def _resolve_family(self, name: str) -> int:
-        attrs = self._pack_nlattr_str(CtrlAttr.FAMILY_NAME, name)
+        attrs = pack_nlattr_str(CtrlAttr.FAMILY_NAME, name)
         msg = self._pack_genlmsg(GENL_ID_CTRL, CtrlCmd.GETFAMILY, 1, attrs)
         if self._sock is None:
             raise NetlinkError("Socket not connected")
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == GENL_ID_CTRL:
-                parsed_attrs = self._parse_attrs(payload, 4)
+                parsed_attrs = parse_attrs(payload, 4)
                 if CtrlAttr.FAMILY_ID in parsed_attrs:
                     family_id: int = struct.unpack("H", parsed_attrs[CtrlAttr.FAMILY_ID][:2])[0]
                     return family_id
         raise NetlinkError(f"Could not resolve family: {name}")
 
     def _make_header(self, ifname: str, flags: int = 0) -> bytes:
-        name_attr = self._pack_nlattr_str(EthtoolAHeader.DEV_NAME, ifname)
+        name_attr = pack_nlattr_str(EthtoolAHeader.DEV_NAME, ifname)
         if flags:
-            name_attr += self._pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
-        return self._pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
+            name_attr += pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
+        return pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
 
     def _parse_bitset(self, data: bytes) -> tuple[int, set[int], set[int]]:
-        attrs = self._parse_nested_attrs(data)
+        attrs = parse_attrs(data)
         size = 0
         if EthtoolABitset.SIZE in attrs:
             size = struct.unpack("I", attrs[EthtoolABitset.SIZE][:4])[0]
@@ -274,7 +208,7 @@ class EthtoolNetlink:
                     break
                 if (nla_type & 0x7FFF) == EthtoolABitsetBits.BIT:
                     bit_data = bits_data[offset + 4 : offset + nla_len]
-                    bit_attrs = self._parse_nested_attrs(bit_data)
+                    bit_attrs = parse_attrs(bit_data)
                     bit_index = None
                     bit_value = True
                     if EthtoolABitsetBit.INDEX in bit_attrs:
@@ -307,7 +241,7 @@ class EthtoolNetlink:
         }
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolALinkmodes.SPEED in attrs:
                     speed = struct.unpack("I", attrs[EthtoolALinkmodes.SPEED][:4])[0]
                     if speed != 0xFFFFFFFF:
@@ -345,7 +279,7 @@ class EthtoolNetlink:
         }
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolALinkinfo.PORT in attrs:
                     port = attrs[EthtoolALinkinfo.PORT][0]
                     result["port_num"] = port
@@ -371,15 +305,15 @@ class EthtoolNetlink:
         self._sock.send(msg)
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolALinkstate.LINK in attrs:
                     return attrs[EthtoolALinkstate.LINK][0] == 1
         return False
 
     def _query_string_set(self, string_set_id: int, ifname: str = "lo") -> dict[int, str]:
-        stringset_id = self._pack_nlattr_u32(EthtoolAStringset.ID, string_set_id)
-        stringset = self._pack_nlattr_nested(EthtoolAStringsets.STRINGSET, stringset_id)
-        stringsets = self._pack_nlattr_nested(EthtoolAStrset.STRINGSETS, stringset)
+        stringset_id = pack_nlattr_u32(EthtoolAStringset.ID, string_set_id)
+        stringset = pack_nlattr_nested(EthtoolAStringsets.STRINGSET, stringset_id)
+        stringsets = pack_nlattr_nested(EthtoolAStrset.STRINGSETS, stringset)
         header = self._make_header(ifname)
         if self._family_id is None:
             raise NetlinkError("Family ID not resolved")
@@ -390,7 +324,7 @@ class EthtoolNetlink:
         names: dict[int, str] = {}
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolAStrset.STRINGSETS in attrs:
                     self._parse_stringsets(attrs[EthtoolAStrset.STRINGSETS], names)
         return names
@@ -418,7 +352,7 @@ class EthtoolNetlink:
             offset += (nla_len + 3) & ~3
 
     def _parse_stringset(self, data: bytes, names: dict[int, str]) -> None:
-        attrs = self._parse_nested_attrs(data)
+        attrs = parse_attrs(data)
         if EthtoolAStringset.STRINGS in attrs:
             self._parse_strings(attrs[EthtoolAStringset.STRINGS], names)
 
@@ -429,7 +363,7 @@ class EthtoolNetlink:
             if nla_len < 4:
                 break
             if (nla_type & 0x7FFF) == EthtoolAStrings.STRING:
-                string_attrs = self._parse_nested_attrs(data[offset + 4 : offset + nla_len])
+                string_attrs = parse_attrs(data[offset + 4 : offset + nla_len])
                 if EthtoolAString.INDEX in string_attrs and EthtoolAString.VALUE in string_attrs:
                     idx = struct.unpack("I", string_attrs[EthtoolAString.INDEX][:4])[0]
                     val = string_attrs[EthtoolAString.VALUE].rstrip(b"\x00").decode("utf-8", errors="replace")
@@ -451,7 +385,7 @@ class EthtoolNetlink:
         nochange_bits: set[int] = set()
         for msg_type, payload in self._recv_msgs():
             if msg_type == self._family_id:
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolAFeatures.HW in attrs:
                     _, hw_bits, _ = self._parse_bitset(attrs[EthtoolAFeatures.HW])
                 if EthtoolAFeatures.ACTIVE in attrs:
