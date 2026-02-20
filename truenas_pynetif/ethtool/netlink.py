@@ -29,9 +29,9 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolAStrset,
     EthtoolMsg,
     NLMsgFlags,
-    NLMsgType,
 )
-from truenas_pynetif.netlink import DeviceNotFound, DumpInterrupted, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
+from truenas_pynetif.netlink._core import recv_msgs
 
 __all__ = [
     "DeviceNotFound",
@@ -173,43 +173,9 @@ class EthtoolNetlink:
         return self._pack_nlmsg(family_id, NLMsgFlags.REQUEST | NLMsgFlags.ACK, payload)
 
     def _recv_msgs(self) -> list[tuple[int, bytes]]:
-        messages = []
-        while True:
-            if self._sock is None:
-                raise NetlinkError("Socket not connected")
-            data = self._sock.recv(65536)
-            offset = 0
-            done = False
-            while offset < len(data):
-                if offset + 16 > len(data):
-                    break
-                nlmsg_len, nlmsg_type, nlmsg_flags, nlmsg_seq, nlmsg_pid = (
-                    struct.unpack_from("IHHII", data, offset)
-                )
-                if nlmsg_len < 16:
-                    break
-                if nlmsg_type == NLMsgType.ERROR:
-                    if offset + 20 <= len(data):
-                        error = struct.unpack_from("i", data, offset + 16)[0]
-                        if error < 0:
-                            error = -error
-                            if error == 19:
-                                raise DeviceNotFound("No such device")
-                            elif error == 95:
-                                raise OperationNotSupported("Operation not supported")
-                            elif error == 16:  # EBUSY
-                                raise DumpInterrupted("Netlink socket busy")
-                            raise NetlinkError(f"Netlink error: {error}")
-                    done = True
-                elif nlmsg_type == 0x03:
-                    done = True
-                else:
-                    payload = data[offset + 16 : offset + nlmsg_len]
-                    messages.append((nlmsg_type, payload))
-                offset += (nlmsg_len + 3) & ~3
-            if done:
-                break
-        return messages
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+        return recv_msgs(self._sock)
 
     def _parse_attrs(self, data: bytes, offset: int = 0) -> dict[int, bytes]:
         attrs = {}
