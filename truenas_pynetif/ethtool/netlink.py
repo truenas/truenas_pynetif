@@ -389,11 +389,11 @@ class EthtoolNetlink:
 
     def get_fec(self, ifname: str) -> FecModeName | None:
         """
-        Get the active FEC (Forward Error Correction) mode for an interface.
+        Get the FEC (Forward Error Correction) mode for an interface.
 
         Returns one of: "AUTO", "OFF", "RS", "BASER", "LLRS", or None if unsupported.
-        ETHTOOL_A_FEC_AUTO indicates the driver auto-selects the mode; when set,
-        "AUTO" is returned regardless of the actual active encoding.
+        Returns "AUTO" when the driver is auto-selecting FEC. When the link is down,
+        falls back to the configured FEC mode since there is no active mode.
         """
         header = self._make_header(ifname)
         if self._family_id is None:
@@ -405,11 +405,11 @@ class EthtoolNetlink:
         try:
             self._sock.send(msg)
         except OSError:
-            # Interface might not support FEC
             return None
 
         is_auto = False
-        active_fec = None
+        active_fec: FecModeName | None = None
+        configured_fec: FecModeName | None = None
         for msg_type, payload in self._recv_msgs():
             if msg_type != self._family_id:
                 continue
@@ -418,17 +418,28 @@ class EthtoolNetlink:
             if EthtoolAFec.AUTO in attrs:
                 is_auto = attrs[EthtoolAFec.AUTO][0] != 0
             if EthtoolAFec.ACTIVE in attrs:
-                # ACTIVE is a link mode bit index, not a bitmask
-                link_mode_bit = struct.unpack('I', attrs[EthtoolAFec.ACTIVE])[0]
-                try:
-                    active_fec = FecMode(link_mode_bit).name
-                except ValueError:
-                    pass
+                # ACTIVE is a nested bitset of active link mode FEC bits
+                _, active_bits, _ = self._parse_bitset(attrs[EthtoolAFec.ACTIVE])
+                for bit in sorted(active_bits):
+                    try:
+                        active_fec = FecMode(bit).name
+                        break
+                    except ValueError:
+                        pass
+            if EthtoolAFec.MODES in attrs:
+                # MODES is the configured FEC — used as fallback when link is down
+                _, modes_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
+                for bit in sorted(modes_bits):
+                    try:
+                        configured_fec = FecMode(bit).name
+                        break
+                    except ValueError:
+                        pass
 
         if is_auto:
             return "AUTO"
 
-        return active_fec
+        return active_fec or configured_fec
 
     def set_fec(self, ifname: str, mode: FecModeName) -> None:
         """
