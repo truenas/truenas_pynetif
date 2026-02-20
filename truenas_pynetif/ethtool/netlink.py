@@ -260,7 +260,7 @@ class EthtoolNetlink:
         return self._pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
 
     def _pack_compact_bitset(self, value_bits: Iterable[int], mask_bits: Iterable[int], size: int) -> bytes:
-        byte_count = (size + 7) // 8
+        byte_count = ((size + 31) // 32) * 4  # kernel requires u32-word-aligned VALUE/MASK
         value_bytes = bytearray(byte_count)
         mask_bytes = bytearray(byte_count)
         for bit in value_bits:
