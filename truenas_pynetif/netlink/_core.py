@@ -1,5 +1,6 @@
 import socket
 import struct
+import threading
 from contextlib import contextmanager
 from typing import Generator
 
@@ -48,16 +49,20 @@ class NLMsgType:
     DONE = 0x03
 
 
+_netlink_route_lock = threading.Lock()
+
+
 @contextmanager
 def netlink_route() -> Generator[socket.socket, None, None]:
     """Context manager for NETLINK_ROUTE socket."""
-    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_ROUTE)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
-    sock.bind((0, 0))
-    try:
-        yield sock
-    finally:
-        sock.close()
+    with _netlink_route_lock:
+        sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_ROUTE)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+        sock.bind((0, 0))
+        try:
+            yield sock
+        finally:
+            sock.close()
 
 
 @contextmanager

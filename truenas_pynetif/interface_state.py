@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -225,7 +226,7 @@ class InterfaceState:
         return result
 
 
-def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState] | None:
+def list_interface_states(max_retries: int = 5) -> dict[str, InterfaceState] | None:
     """
     Get all network interfaces using pure netlink.
 
@@ -262,6 +263,7 @@ def list_interface_states(max_retries: int = 3) -> dict[str, InterfaceState] | N
 
         except DumpInterrupted:
             if attempt < max_retries:
+                time.sleep(0.05 * attempt)
                 continue
             raise
     return None
