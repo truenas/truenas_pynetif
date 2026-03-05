@@ -226,14 +226,17 @@ class InterfaceState:
         return result
 
 
-def list_interface_states(max_retries: int = 5) -> dict[str, InterfaceState] | None:
+def list_interface_states(timeout: float = 5.0) -> dict[str, InterfaceState]:
     """
     Get all network interfaces using pure netlink.
 
     Returns a dict mapping interface name to InterfaceState.
-    This is a drop-in replacement for netif.list_interfaces().
+    Retries on DumpInterrupted (kernel signals inconsistent dump)
+    with 200ms sleep between attempts up to `timeout` seconds
+    (clamped to 2-30s).
     """
-    for attempt in range(1, max_retries + 1):
+    deadline = time.monotonic() + max(2.0, min(timeout, 30.0))
+    while True:
         try:
             with netlink_route() as sock:
                 # Get all links
@@ -262,8 +265,7 @@ def list_interface_states(max_retries: int = 5) -> dict[str, InterfaceState] | N
             return result
 
         except DumpInterrupted:
-            if attempt < max_retries:
-                time.sleep(0.05 * attempt)
+            if time.monotonic() < deadline:
+                time.sleep(0.2)
                 continue
             raise
-    return None
