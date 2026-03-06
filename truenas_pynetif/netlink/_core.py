@@ -146,6 +146,8 @@ def recv_msgs(sock: socket.socket) -> list[tuple[int, bytes]]:
                             raise DeviceNotFound("No such device")
                         elif error == 95:  # EOPNOTSUPP
                             raise OperationNotSupported("Operation not supported")
+                        elif error == 16:  # EBUSY
+                            raise DumpInterrupted("Netlink socket busy")
                         raise NetlinkError(f"Netlink error: {error}", error_code=error)
                 done = True
             elif nlmsg_type == NLMsgType.DONE:
