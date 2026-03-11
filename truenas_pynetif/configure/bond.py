@@ -147,6 +147,8 @@ def configure_bond(
         bond_rem_member(sock, index=links[member].index)
 
     for member in desired_members_set - current_members_set:
+        # Kernel requires the interface to be DOWN before it can join a bond
+        set_link_down(sock, index=links[member].index)
         bond_add_member(sock, index=links[member].index, master_index=link.index)
 
     # Bring up all members
