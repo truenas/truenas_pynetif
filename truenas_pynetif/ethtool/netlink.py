@@ -32,6 +32,7 @@ from truenas_pynetif.ethtool.constants import (
 from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
 from truenas_pynetif.netlink._core import (
     pack_genlmsg,
+    pack_nlattr,
     pack_nlattr_nested,
     pack_nlattr_str,
     pack_nlattr_u32,
@@ -203,9 +204,9 @@ class EthtoolNetlink:
             value_bytes[bit // 8] |= 1 << (bit % 8)
         for bit in mask_bits:
             mask_bytes[bit // 8] |= 1 << (bit % 8)
-        result = self._pack_nlattr_u32(EthtoolABitset.SIZE, size)
-        result += self._pack_nlattr(EthtoolABitset.VALUE, bytes(value_bytes))
-        result += self._pack_nlattr(EthtoolABitset.MASK, bytes(mask_bytes))
+        result = pack_nlattr_u32(EthtoolABitset.SIZE, size)
+        result += pack_nlattr(EthtoolABitset.VALUE, bytes(value_bytes))
+        result += pack_nlattr(EthtoolABitset.MASK, bytes(mask_bytes))
         return result
 
     def _parse_bitset(self, data: bytes) -> tuple[int, set[int], set[int]]:
@@ -350,7 +351,7 @@ class EthtoolNetlink:
             if msg_type != self._family_id:
                 continue
 
-            attrs = self._parse_attrs(payload, 4)
+            attrs = parse_attrs(payload, 4)
             if EthtoolAFec.AUTO in attrs:
                 is_auto = attrs[EthtoolAFec.AUTO][0] != 0
             if EthtoolAFec.ACTIVE in attrs:
@@ -391,7 +392,7 @@ class EthtoolNetlink:
         header = self._make_header(ifname)
 
         if mode == "AUTO":
-            fec_auto = self._pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 1))
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 1))
             attrs = header + fec_auto
         else:
             try:
@@ -402,8 +403,8 @@ class EthtoolNetlink:
             all_fec_bits = [m.value for m in FecMode]
             bitset_size = max(all_fec_bits) + 1
             bitset = self._pack_compact_bitset([fec_mode.value], all_fec_bits, bitset_size)
-            modes = self._pack_nlattr_nested(EthtoolAFec.MODES, bitset)
-            fec_auto = self._pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 0))
+            modes = pack_nlattr_nested(EthtoolAFec.MODES, bitset)
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 0))
             attrs = header + modes + fec_auto
 
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_SET, 1, attrs)
@@ -434,7 +435,7 @@ class EthtoolNetlink:
                 if msg_type != self._family_id:
                     continue
 
-                attrs = self._parse_attrs(payload, 4)
+                attrs = parse_attrs(payload, 4)
                 if EthtoolAFec.AUTO in attrs and attrs[EthtoolAFec.AUTO][0] != 0:
                     modes.append("AUTO")
                 if EthtoolAFec.MODES in attrs:
