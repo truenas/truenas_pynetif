@@ -329,8 +329,9 @@ class EthtoolNetlink:
         Get the FEC (Forward Error Correction) mode for an interface.
 
         Returns one of: "AUTO", "OFF", "RS", "BASER", "LLRS", or None if unsupported.
-        Returns "AUTO" when the driver is auto-selecting FEC. When the link is down,
-        falls back to the configured FEC mode since there is no active mode.
+        When the link is up, returns the active (hardware-negotiated) FEC mode.
+        Returns "AUTO" only when auto-selection is enabled but no active mode is
+        reported (e.g. link is down). Falls back to the configured mode otherwise.
         """
         header = self._make_header(ifname)
         if self._family_id is None:
@@ -358,7 +359,7 @@ class EthtoolNetlink:
                 # ACTIVE is a plain u32 bit index (nla_put_u32), not a bitset
                 active_bit = struct.unpack_from("I", attrs[EthtoolAFec.ACTIVE])[0]
                 try:
-                    active_fec = FecMode(active_bit).name
+                    active_fec = FecMode(active_bit).name  # type: ignore[assignment]
                 except ValueError:
                     pass
             if EthtoolAFec.MODES in attrs:
@@ -366,7 +367,7 @@ class EthtoolNetlink:
                 _, modes_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
                 for bit in sorted(modes_bits):
                     try:
-                        configured_fec = FecMode(bit).name
+                        configured_fec = FecMode(bit).name  # type: ignore[assignment]
                         break
                     except ValueError:
                         pass
@@ -413,10 +414,12 @@ class EthtoolNetlink:
         self._recv_msgs()
 
     def get_fec_modes(self, ifname: str) -> list[FecModeName]:
-        """Return FEC modes supported by the interface.
+        """Return the configured FEC modes for the interface.
 
         Returns an empty list if the interface does not support FEC.
-        AUTO is included when the interface reports support for automatic FEC selection.
+        AUTO is included when the driver reports that auto-selection is active.
+        Note: the MODES bitset reflects what the driver has configured (fec.fec),
+        not necessarily the full set of hardware-capable modes.
         """
         header = self._make_header(ifname)
         if self._family_id is None:
@@ -443,7 +446,7 @@ class EthtoolNetlink:
                     _, value_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
                     for bit in sorted(value_bits):
                         try:
-                            modes.append(FecMode(bit).name)
+                            modes.append(FecMode(bit).name)  # type: ignore[arg-type]
                         except ValueError:
                             pass
 
