@@ -355,14 +355,12 @@ class EthtoolNetlink:
             if EthtoolAFec.AUTO in attrs:
                 is_auto = attrs[EthtoolAFec.AUTO][0] != 0
             if EthtoolAFec.ACTIVE in attrs:
-                # ACTIVE is a nested bitset of active link mode FEC bits
-                _, active_bits, _ = self._parse_bitset(attrs[EthtoolAFec.ACTIVE])
-                for bit in sorted(active_bits):
-                    try:
-                        active_fec = FecMode(bit).name
-                        break
-                    except ValueError:
-                        pass
+                # ACTIVE is a plain u32 bit index (nla_put_u32), not a bitset
+                active_bit = struct.unpack_from("I", attrs[EthtoolAFec.ACTIVE])[0]
+                try:
+                    active_fec = FecMode(active_bit).name
+                except ValueError:
+                    pass
             if EthtoolAFec.MODES in attrs:
                 # MODES is the configured FEC — used as fallback when link is down
                 _, modes_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
