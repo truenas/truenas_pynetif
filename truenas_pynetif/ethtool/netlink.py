@@ -373,10 +373,13 @@ class EthtoolNetlink:
                     except ValueError:
                         pass
 
+        # ACTIVE takes precedence: AUTO=1 + ACTIVE=RS is a normal state meaning
+        # "auto mode, hardware negotiated RS". Report what the hardware is actually using.
+        if active_fec is not None:
+            return active_fec
         if is_auto:
             return "AUTO"
-
-        return active_fec or configured_fec
+        return configured_fec
 
     def set_fec(self, ifname: str, mode: FecModeName) -> None:
         """
