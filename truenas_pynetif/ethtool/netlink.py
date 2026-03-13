@@ -64,6 +64,7 @@ FecModeName = Literal["AUTO", "OFF", "RS", "BASER", "LLRS"]
 
 class LinkModesInfo(TypedDict):
     """Information about link modes from ethtool."""
+
     speed: int | None
     duplex: str
     autoneg: bool
@@ -72,6 +73,7 @@ class LinkModesInfo(TypedDict):
 
 class LinkInfo(TypedDict):
     """Information about physical link properties from ethtool."""
+
     port: str
     port_num: int
     transceiver: str
@@ -80,6 +82,7 @@ class LinkInfo(TypedDict):
 
 class FeaturesInfo(TypedDict):
     """Information about network features from ethtool."""
+
     enabled: list[str]
     disabled: list[str]
     supported: list[str]
@@ -102,16 +105,18 @@ class PortType(IntEnum):
     OTHER = 0xFF
 
 
-PORT_TYPE_NAMES: MappingProxyType[PortType, str] = MappingProxyType({
-    PortType.TP: "Twisted Pair",
-    PortType.AUI: "AUI",
-    PortType.MII: "MII",
-    PortType.FIBRE: "Fibre",
-    PortType.BNC: "BNC",
-    PortType.DA: "Direct Attach Copper",
-    PortType.NONE: "None",
-    PortType.OTHER: "Other",
-})
+PORT_TYPE_NAMES: MappingProxyType[PortType, str] = MappingProxyType(
+    {
+        PortType.TP: "Twisted Pair",
+        PortType.AUI: "AUI",
+        PortType.MII: "MII",
+        PortType.FIBRE: "Fibre",
+        PortType.BNC: "BNC",
+        PortType.DA: "Direct Attach Copper",
+        PortType.NONE: "None",
+        PortType.OTHER: "Other",
+    }
+)
 
 
 class Duplex(IntEnum):
@@ -128,10 +133,11 @@ class Transceiver(IntEnum):
 # These are ETHTOOL_LINK_MODE_FEC_*_BIT values from ethtool_link_mode_bit_indices.
 class FecMode(IntEnum):
     """FEC link mode bit indices as reported by ETHTOOL_A_FEC_ACTIVE."""
-    OFF = 49     # ETHTOOL_LINK_MODE_FEC_NONE_BIT
-    RS = 50      # ETHTOOL_LINK_MODE_FEC_RS_BIT
-    BASER = 51   # ETHTOOL_LINK_MODE_FEC_BASER_BIT
-    LLRS = 74    # ETHTOOL_LINK_MODE_FEC_LLRS_BIT
+
+    OFF = 49  # ETHTOOL_LINK_MODE_FEC_NONE_BIT
+    RS = 50  # ETHTOOL_LINK_MODE_FEC_RS_BIT
+    BASER = 51  # ETHTOOL_LINK_MODE_FEC_BASER_BIT
+    LLRS = 74  # ETHTOOL_LINK_MODE_FEC_LLRS_BIT
 
 
 @dataclass(slots=True)
@@ -394,7 +400,7 @@ class EthtoolNetlink:
         header = self._make_header(ifname)
 
         if mode == "AUTO":
-            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 1))
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack("B", 1))
             attrs = header + fec_auto
         else:
             try:
@@ -406,7 +412,7 @@ class EthtoolNetlink:
             bitset_size = max(all_fec_bits) + 1
             bitset = self._pack_compact_bitset([fec_mode.value], all_fec_bits, bitset_size)
             modes = pack_nlattr_nested(EthtoolAFec.MODES, bitset)
-            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack('B', 0))
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack("B", 0))
             attrs = header + modes + fec_auto
 
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_SET, 1, attrs)
