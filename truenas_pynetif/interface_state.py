@@ -75,18 +75,14 @@ class InterfaceState:
     @property
     def cloned(self) -> bool:
         """Whether this is a cloned/virtual interface."""
-        return self.name.startswith(CLONED_PREFIXES) or self.name.startswith(
-            INTERNAL_INTERFACES
-        )
+        return self.name.startswith(CLONED_PREFIXES) or self.name.startswith(INTERNAL_INTERFACES)
 
     @property
     def bus(self) -> str | None:
         """Parent bus type (e.g., 'usb', 'pci')."""
         return self.link.parentbus
 
-    def asdict(
-        self, address_stats: bool = False, vrrp_config: list[Any] | None = None
-    ) -> dict[str, Any]:
+    def asdict(self, address_stats: bool = False, vrrp_config: list[Any] | None = None) -> dict[str, Any]:
         """
         Build interface state dict compatible with Interface.asdict().
 

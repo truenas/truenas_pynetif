@@ -11,6 +11,7 @@ logger = getLogger(__name__)
 
 class MediaInfo(TypedDict):
     """Media information for network interface."""
+
     media_type: str
     media_subtype: str
     active_media_type: str
@@ -19,7 +20,6 @@ class MediaInfo(TypedDict):
 
 
 class EthernetHardwareSettings:
-
     def __init__(self, interface: str):
         self._name = interface
         self._caps = self.__capabilities__()
@@ -27,7 +27,7 @@ class EthernetHardwareSettings:
         self._fec: FecModeName | None = self.__fec_mode__()
 
     def __capabilities__(self) -> dict[str, list[str]]:
-        result: dict[str, list[str]] = {'enabled': [], 'disabled': [], 'supported': []}
+        result: dict[str, list[str]] = {"enabled": [], "disabled": [], "supported": []}
         return result
 
         # FIXME: unused and very inefficient with overall
@@ -39,7 +39,7 @@ class EthernetHardwareSettings:
         except (OperationNotSupported, DeviceNotFound):
             pass
         except Exception:
-            logger.error('Failed to get capabilities for %s', self._name, exc_info=True)
+            logger.error("Failed to get capabilities for %s", self._name, exc_info=True)
         return result
 
     def __set_features__(self, action: str, capabilities: list[str]) -> None:
@@ -48,16 +48,16 @@ class EthernetHardwareSettings:
 
         features_to_change = []
         for cap in capabilities:
-            if action == 'enable' and cap in self.disabled_capabilities:
+            if action == "enable" and cap in self.disabled_capabilities:
                 features_to_change.append(cap)
-            elif action == 'disable' and cap in self.enabled_capabilities:
+            elif action == "disable" and cap in self.enabled_capabilities:
                 features_to_change.append(cap)
 
         if not features_to_change:
             return
 
-        cmd = ['ethtool', '-K', self._name]
-        value = 'on' if action == 'enable' else 'off'
+        cmd = ["ethtool", "-K", self._name]
+        value = "on" if action == "enable" else "off"
         for feature in features_to_change:
             if feature not in self.supported_capabilities:
                 logger.error('Feature "%s" not found on interface "%s"', feature, self._name)
@@ -68,82 +68,82 @@ class EthernetHardwareSettings:
             try:
                 run(cmd)
             except subprocess.CalledProcessError as e:
-                logger.error('Failed to set features on %s: %s', self._name, e.stderr)
+                logger.error("Failed to set features on %s: %s", self._name, e.stderr)
 
     @property
     def enabled_capabilities(self) -> list[str]:
-        return self._caps['enabled']
+        return self._caps["enabled"]
 
     @enabled_capabilities.setter
     def enabled_capabilities(self, capabilities: list[str]) -> None:
         # c.f. comment in self.__capabilities__()
         return
-        self.__set_features__('enable', capabilities)
+        self.__set_features__("enable", capabilities)
 
     @property
     def disabled_capabilities(self) -> list[str]:
-        return self._caps['disabled']
+        return self._caps["disabled"]
 
     @disabled_capabilities.setter
     def disabled_capabilities(self, capabilities: list[str]) -> None:
         # c.f. comment in self.__capabilities__()
         return
-        self.__set_features__('disable', capabilities)
+        self.__set_features__("disable", capabilities)
 
     @property
     def supported_capabilities(self) -> list[str]:
-        return self._caps['supported']
+        return self._caps["supported"]
 
     def __mediainfo__(self) -> MediaInfo:
         result: MediaInfo = {
-            'media_type': '',
-            'media_subtype': '',
-            'active_media_type': '',
-            'active_media_subtype': '',
-            'supported_media': [],
+            "media_type": "",
+            "media_subtype": "",
+            "active_media_type": "",
+            "active_media_subtype": "",
+            "supported_media": [],
         }
         try:
             eth = get_ethtool()
             link_modes = eth.get_link_modes(self._name)
-            port = eth.get_link_info(self._name)['port']
-            speed = link_modes['speed']
-            autoneg = link_modes['autoneg']
-            supported_modes = link_modes['supported_modes']
-            mst = 'Unknown'
+            port = eth.get_link_info(self._name)["port"]
+            speed = link_modes["speed"]
+            autoneg = link_modes["autoneg"]
+            supported_modes = link_modes["supported_modes"]
+            mst = "Unknown"
             if speed is not None and speed > 0:
-                mst = f'{speed}Mb/s'
-            mst = f'{mst} {port}'
+                mst = f"{speed}Mb/s"
+            mst = f"{mst} {port}"
 
-            result['media_type'] = 'Ethernet'
-            result['media_subtype'] = 'autoselect' if autoneg else mst
-            result['active_media_type'] = 'Ethernet'
-            result['active_media_subtype'] = mst
-            result['supported_media'].extend(supported_modes)
+            result["media_type"] = "Ethernet"
+            result["media_subtype"] = "autoselect" if autoneg else mst
+            result["active_media_type"] = "Ethernet"
+            result["active_media_subtype"] = mst
+            result["supported_media"].extend(supported_modes)
         except (OperationNotSupported, DeviceNotFound):
             pass
         except Exception:
-            logger.error('Failed to get media info for %s', self._name, exc_info=True)
+            logger.error("Failed to get media info for %s", self._name, exc_info=True)
         return result
 
     @property
     def media_type(self) -> str:
-        return self._media['media_type']
+        return self._media["media_type"]
 
     @property
     def media_subtype(self) -> str:
-        return self._media['media_subtype']
+        return self._media["media_subtype"]
 
     @property
     def active_media_type(self) -> str:
-        return self._media['active_media_type']
+        return self._media["active_media_type"]
 
     @property
     def active_media_subtype(self) -> str:
-        return self._media['active_media_subtype']
+        return self._media["active_media_subtype"]
 
     @property
     def supported_media(self) -> list[str]:
-        return self._media['supported_media']
+        return self._media["supported_media"]
 
     def __fec_mode__(self) -> FecModeName | None:
         """Get current FEC mode."""
@@ -153,7 +153,7 @@ class EthernetHardwareSettings:
         except (OperationNotSupported, DeviceNotFound):
             pass
         except Exception:
-            logger.error('Failed to get FEC mode for %s', self._name, exc_info=True)
+            logger.error("Failed to get FEC mode for %s", self._name, exc_info=True)
         return None
 
     @property
