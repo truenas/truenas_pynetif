@@ -75,18 +75,14 @@ class InterfaceState:
     @property
     def cloned(self) -> bool:
         """Whether this is a cloned/virtual interface."""
-        return self.name.startswith(CLONED_PREFIXES) or self.name.startswith(
-            INTERNAL_INTERFACES
-        )
+        return self.name.startswith(CLONED_PREFIXES) or self.name.startswith(INTERNAL_INTERFACES)
 
     @property
     def bus(self) -> str | None:
         """Parent bus type (e.g., 'usb', 'pci')."""
         return self.link.parentbus
 
-    def asdict(
-        self, address_stats: bool = False, vrrp_config: list[Any] | None = None
-    ) -> dict[str, Any]:
+    def asdict(self, address_stats: bool = False, vrrp_config: list[Any] | None = None) -> dict[str, Any]:
         """
         Build interface state dict compatible with Interface.asdict().
 
@@ -131,7 +127,7 @@ class InterfaceState:
             "tx_queues": link.num_tx_queues,
         }
 
-        # Add ethtool info (capabilities, media)
+        # Add ethtool info (capabilities, media, FEC)
         with EthernetHardwareSettings(self.name) as dev:
             state.update(
                 {
@@ -141,6 +137,7 @@ class InterfaceState:
                     "media_subtype": dev.media_subtype,
                     "active_media_type": dev.active_media_type,
                     "active_media_subtype": dev.active_media_subtype,
+                    "fec_mode": dev.fec_mode,
                 }
             )
 
