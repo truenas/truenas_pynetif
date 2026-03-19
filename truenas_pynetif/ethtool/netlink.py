@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import IntEnum
 from types import MappingProxyType
-from typing import Self, TypedDict
+from typing import Iterable, Literal, Self, TypedDict
 
 from truenas_pynetif.ethtool.constants import (
     GENL_ID_CTRL,
@@ -16,6 +16,7 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolABitset,
     EthtoolABitsetBit,
     EthtoolABitsetBits,
+    EthtoolAFec,
     EthtoolAFeatures,
     EthtoolAHeader,
     EthtoolALinkinfo,
@@ -31,6 +32,7 @@ from truenas_pynetif.ethtool.constants import (
 from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
 from truenas_pynetif.netlink._core import (
     pack_genlmsg,
+    pack_nlattr,
     pack_nlattr_nested,
     pack_nlattr_str,
     pack_nlattr_u32,
@@ -43,6 +45,8 @@ __all__ = [
     "Duplex",
     "EthtoolNetlink",
     "FeaturesInfo",
+    "FecMode",
+    "FecModeName",
     "LinkInfo",
     "LinkModesInfo",
     "NetlinkError",
@@ -55,8 +59,12 @@ __all__ = [
 ]
 
 
+FecModeName = Literal["AUTO", "OFF", "RS", "BASER", "LLRS"]
+
+
 class LinkModesInfo(TypedDict):
     """Information about link modes from ethtool."""
+
     speed: int | None
     duplex: str
     autoneg: bool
@@ -65,6 +73,7 @@ class LinkModesInfo(TypedDict):
 
 class LinkInfo(TypedDict):
     """Information about physical link properties from ethtool."""
+
     port: str
     port_num: int
     transceiver: str
@@ -73,6 +82,7 @@ class LinkInfo(TypedDict):
 
 class FeaturesInfo(TypedDict):
     """Information about network features from ethtool."""
+
     enabled: list[str]
     disabled: list[str]
     supported: list[str]
@@ -95,16 +105,18 @@ class PortType(IntEnum):
     OTHER = 0xFF
 
 
-PORT_TYPE_NAMES: MappingProxyType[PortType, str] = MappingProxyType({
-    PortType.TP: "Twisted Pair",
-    PortType.AUI: "AUI",
-    PortType.MII: "MII",
-    PortType.FIBRE: "Fibre",
-    PortType.BNC: "BNC",
-    PortType.DA: "Direct Attach Copper",
-    PortType.NONE: "None",
-    PortType.OTHER: "Other",
-})
+PORT_TYPE_NAMES: MappingProxyType[PortType, str] = MappingProxyType(
+    {
+        PortType.TP: "Twisted Pair",
+        PortType.AUI: "AUI",
+        PortType.MII: "MII",
+        PortType.FIBRE: "Fibre",
+        PortType.BNC: "BNC",
+        PortType.DA: "Direct Attach Copper",
+        PortType.NONE: "None",
+        PortType.OTHER: "Other",
+    }
+)
 
 
 class Duplex(IntEnum):
@@ -116,6 +128,16 @@ class Duplex(IntEnum):
 class Transceiver(IntEnum):
     INTERNAL = 0
     EXTERNAL = 1
+
+
+# These are ETHTOOL_LINK_MODE_FEC_*_BIT values from ethtool_link_mode_bit_indices.
+class FecMode(IntEnum):
+    """FEC link mode bit indices as reported by ETHTOOL_A_FEC_ACTIVE."""
+
+    OFF = 49  # ETHTOOL_LINK_MODE_FEC_NONE_BIT
+    RS = 50  # ETHTOOL_LINK_MODE_FEC_RS_BIT
+    BASER = 51  # ETHTOOL_LINK_MODE_FEC_BASER_BIT
+    LLRS = 74  # ETHTOOL_LINK_MODE_FEC_LLRS_BIT
 
 
 @dataclass(slots=True)
@@ -179,6 +201,19 @@ class EthtoolNetlink:
         if flags:
             name_attr += pack_nlattr_u32(EthtoolAHeader.FLAGS, flags)
         return pack_nlattr_nested(EthtoolAHeader.HEADER, name_attr)
+
+    def _pack_compact_bitset(self, value_bits: Iterable[int], mask_bits: Iterable[int], size: int) -> bytes:
+        byte_count = ((size + 31) // 32) * 4  # kernel requires u32-word-aligned VALUE/MASK
+        value_bytes = bytearray(byte_count)
+        mask_bytes = bytearray(byte_count)
+        for bit in value_bits:
+            value_bytes[bit // 8] |= 1 << (bit % 8)
+        for bit in mask_bits:
+            mask_bytes[bit // 8] |= 1 << (bit % 8)
+        result = pack_nlattr_u32(EthtoolABitset.SIZE, size)
+        result += pack_nlattr(EthtoolABitset.VALUE, bytes(value_bytes))
+        result += pack_nlattr(EthtoolABitset.MASK, bytes(mask_bytes))
+        return result
 
     def _parse_bitset(self, data: bytes) -> tuple[int, set[int], set[int]]:
         attrs = parse_attrs(data)
@@ -294,6 +329,137 @@ class EthtoolNetlink:
                 if EthtoolALinkinfo.PHYADDR in attrs:
                     result["phyaddr"] = attrs[EthtoolALinkinfo.PHYADDR][0]
         return result
+
+    def get_fec(self, ifname: str) -> FecModeName | None:
+        """
+        Get the FEC (Forward Error Correction) mode for an interface.
+
+        Returns one of: "AUTO", "OFF", "RS", "BASER", "LLRS", or None if unsupported.
+        When the link is up, returns the active (hardware-negotiated) FEC mode.
+        Returns "AUTO" only when auto-selection is enabled but no active mode is
+        reported (e.g. link is down). Falls back to the configured mode otherwise.
+        """
+        header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        try:
+            self._sock.send(msg)
+        except OSError:
+            return None
+
+        is_auto = False
+        active_fec: FecModeName | None = None
+        configured_fec: FecModeName | None = None
+        for msg_type, payload in self._recv_msgs():
+            if msg_type != self._family_id:
+                continue
+
+            attrs = parse_attrs(payload, 4)
+            if EthtoolAFec.AUTO in attrs:
+                is_auto = attrs[EthtoolAFec.AUTO][0] != 0
+            if EthtoolAFec.ACTIVE in attrs:
+                # ACTIVE is a plain u32 bit index (nla_put_u32), not a bitset
+                active_bit = struct.unpack_from("I", attrs[EthtoolAFec.ACTIVE])[0]
+                try:
+                    active_fec = FecMode(active_bit).name  # type: ignore[assignment]
+                except ValueError:
+                    pass
+            if EthtoolAFec.MODES in attrs:
+                # MODES is the configured FEC — used as fallback when link is down
+                _, modes_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
+                for bit in sorted(modes_bits):
+                    try:
+                        configured_fec = FecMode(bit).name  # type: ignore[assignment]
+                        break
+                    except ValueError:
+                        pass
+
+        # ACTIVE takes precedence: AUTO=1 + ACTIVE=RS is a normal state meaning
+        # "auto mode, hardware negotiated RS". Report what the hardware is actually using.
+        if active_fec is not None:
+            return active_fec
+        if is_auto:
+            return "AUTO"
+        return configured_fec
+
+    def set_fec(self, ifname: str, mode: FecModeName) -> None:
+        """
+        Set the FEC mode for an interface.
+
+        mode must be one of: "AUTO", "OFF", "RS", "BASER", "LLRS"
+        """
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        header = self._make_header(ifname)
+
+        if mode == "AUTO":
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack("B", 1))
+            attrs = header + fec_auto
+        else:
+            try:
+                fec_mode = FecMode[mode]
+            except KeyError:
+                raise ValueError(f"Invalid FEC mode: {mode!r}")
+
+            all_fec_bits = [m.value for m in FecMode]
+            bitset_size = max(all_fec_bits) + 1
+            bitset = self._pack_compact_bitset([fec_mode.value], all_fec_bits, bitset_size)
+            modes = pack_nlattr_nested(EthtoolAFec.MODES, bitset)
+            fec_auto = pack_nlattr(EthtoolAFec.AUTO, struct.pack("B", 0))
+            attrs = header + modes + fec_auto
+
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_SET, 1, attrs)
+        self._sock.send(msg)
+        self._recv_msgs()
+
+    def get_fec_modes(self, ifname: str) -> list[FecModeName]:
+        """Return the configured FEC modes for the interface.
+
+        Returns an empty list if the interface does not support FEC.
+        AUTO is included when the driver reports that auto-selection is active.
+        Note: the MODES bitset reflects what the driver has configured (fec.fec),
+        not necessarily the full set of hardware-capable modes.
+        """
+        header = self._make_header(ifname)
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        try:
+            self._sock.send(msg)
+        except OSError:
+            return []
+
+        modes: list[FecModeName] = []
+        try:
+            for msg_type, payload in self._recv_msgs():
+                if msg_type != self._family_id:
+                    continue
+
+                attrs = parse_attrs(payload, 4)
+                if EthtoolAFec.AUTO in attrs and attrs[EthtoolAFec.AUTO][0] != 0:
+                    modes.append("AUTO")
+                if EthtoolAFec.MODES in attrs:
+                    _, value_bits, _ = self._parse_bitset(attrs[EthtoolAFec.MODES])
+                    for bit in sorted(value_bits):
+                        try:
+                            modes.append(FecMode(bit).name)  # type: ignore[arg-type]
+                        except ValueError:
+                            pass
+
+        except (DeviceNotFound, OperationNotSupported):
+            return []
+
+        return modes
 
     def get_link_state(self, ifname: str) -> bool:
         header = self._make_header(ifname)
