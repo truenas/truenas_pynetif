@@ -34,8 +34,12 @@ class EthtoolMsg(IntEnum):
     LINKMODES_GET = 4
     LINKSTATE_GET = 6
     FEATURES_GET = 11
+    PRIVFLAGS_GET = 13
+    PRIVFLAGS_SET = 14
     FEC_GET = 29
     FEC_SET = 30
+    RSS_GET = 38
+    RSS_SET = 48
 
 
 class EthtoolAHeader(IntEnum):
@@ -111,6 +115,57 @@ class EthtoolAFec(IntEnum):
     ACTIVE = 4
 
 
+class EthtoolAPrivflags(IntEnum):
+    HEADER = 1
+    FLAGS = 2
+
+
 class EthSS(IntEnum):
+    PRIV_FLAGS = 2
     FEATURES = 4
     LINK_MODES = 9
+
+
+class EthtoolARss(IntEnum):
+    HEADER = 1
+    CONTEXT = 2
+    HFUNC = 3
+    INDIR = 4
+    HKEY = 5
+    INPUT_XFRM = 6
+    START_CONTEXT = 7
+    FLOW_HASH = 8
+
+
+# ETHTOOL_A_FLOW_* values (nested inside ETHTOOL_A_RSS_FLOW_HASH). Each
+# nested attribute's TYPE is the flow-type enum and its payload is the
+# NLA_UINT hash-field bitmask (RXH_* bits below).
+class EthtoolAFlow(IntEnum):
+    ETHER = 1
+    IP4 = 2
+    IP6 = 3
+    TCP4 = 4
+    TCP6 = 5
+    UDP4 = 6
+    UDP6 = 7
+    SCTP4 = 8
+    SCTP6 = 9
+    AH4 = 10
+    AH6 = 11
+    ESP4 = 12
+    ESP6 = 13
+    AH_ESP4 = 14
+    AH_ESP6 = 15
+
+
+# RSS flow-hash field bits (<linux/ethtool.h> RXH_*).
+class RxHashField(IntFlag):
+    L2DA = 1 << 1
+    VLAN = 1 << 2
+    L3_PROTO = 1 << 3
+    IP_SRC = 1 << 4
+    IP_DST = 1 << 5
+    L4_B_0_1 = 1 << 6  # src port for TCP/UDP/SCTP
+    L4_B_2_3 = 1 << 7  # dst port for TCP/UDP/SCTP
+    GTP_TEID = 1 << 8
+    IP6_FL = 1 << 9
