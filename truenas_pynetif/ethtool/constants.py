@@ -9,6 +9,7 @@ GENL_ID_CTRL = 0x10
 # Netlink attribute flag
 NLA_F_NESTED = 0x8000
 
+
 class NLMsgFlags(IntFlag):
     REQUEST = 0x01
     ACK = 0x04
