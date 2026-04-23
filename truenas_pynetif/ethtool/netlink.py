@@ -30,6 +30,7 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolAStringsets,
     EthtoolAStrings,
     EthtoolAStrset,
+    EthtoolFlags,
     EthtoolMsg,
     RxHashField,
 )
@@ -265,7 +266,7 @@ class EthtoolNetlink:
 
     def get_link_modes(self, ifname: str) -> LinkModesInfo:
         link_mode_names = self._get_link_mode_names()
-        header = self._make_header(ifname)
+        header = self._make_header(ifname, flags=EthtoolFlags.COMPACT_BITSETS)
         if self._family_id is None:
             raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.LINKMODES_GET, 1, header)
@@ -294,9 +295,11 @@ class EthtoolNetlink:
                 if EthtoolALinkmodes.AUTONEG in attrs:
                     result["autoneg"] = attrs[EthtoolALinkmodes.AUTONEG][0] == 1
                 if EthtoolALinkmodes.OURS in attrs:
-                    _, value_bits, _ = self._parse_bitset(attrs[EthtoolALinkmodes.OURS])
+                    # OURS is packed val=advertising, mask=supported. Take
+                    # mask_bits for the "supported" list.
+                    _, _, mask_bits = self._parse_bitset(attrs[EthtoolALinkmodes.OURS])
                     modes = []
-                    for bit in sorted(value_bits):
+                    for bit in sorted(mask_bits):
                         if bit in link_mode_names:
                             modes.append(link_mode_names[bit])
                     result["supported_modes"] = modes
@@ -343,7 +346,7 @@ class EthtoolNetlink:
         Returns "AUTO" only when auto-selection is enabled but no active mode is
         reported (e.g. link is down). Falls back to the configured mode otherwise.
         """
-        header = self._make_header(ifname)
+        header = self._make_header(ifname, flags=EthtoolFlags.COMPACT_BITSETS)
         if self._family_id is None:
             raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
@@ -431,7 +434,7 @@ class EthtoolNetlink:
         Note: the MODES bitset reflects what the driver has configured (fec.fec),
         not necessarily the full set of hardware-capable modes.
         """
-        header = self._make_header(ifname)
+        header = self._make_header(ifname, flags=EthtoolFlags.COMPACT_BITSETS)
         if self._family_id is None:
             raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEC_GET, 1, header)
@@ -542,7 +545,7 @@ class EthtoolNetlink:
 
     def get_features(self, ifname: str) -> FeaturesInfo:
         feature_names = self._get_feature_names()
-        header = self._make_header(ifname)
+        header = self._make_header(ifname, flags=EthtoolFlags.COMPACT_BITSETS)
         if self._family_id is None:
             raise NetlinkError("Family ID not resolved")
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.FEATURES_GET, 1, header)
@@ -590,10 +593,7 @@ class EthtoolNetlink:
         if not names:
             return {}
 
-        # Request compact-bitset format (VALUE/MASK as bitmaps) — the
-        # default list format uses NLA_FLAG semantics for per-bit VALUE
-        # which the shared _parse_bitset does not interpret reliably.
-        header = self._make_header(ifname, flags=1)  # ETHTOOL_FLAG_COMPACT_BITSETS
+        header = self._make_header(ifname, flags=EthtoolFlags.COMPACT_BITSETS)
         msg = self._pack_genlmsg(self._family_id, EthtoolMsg.PRIVFLAGS_GET, 1, header)
         try:
             self._sock.send(msg)

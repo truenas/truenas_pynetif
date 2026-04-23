@@ -9,10 +9,22 @@ GENL_ID_CTRL = 0x10
 # Netlink attribute flag
 NLA_F_NESTED = 0x8000
 
-
 class NLMsgFlags(IntFlag):
     REQUEST = 0x01
     ACK = 0x04
+
+
+class EthtoolFlags(IntFlag):
+    """ETHTOOL_A_HEADER_FLAGS bits.
+
+    COMPACT_BITSETS asks the kernel for VALUE/MASK bitmaps instead of
+    per-bit list entries. List-format semantics vary per attribute (some
+    bitsets flag "on" via NLA_FLAG VALUE, others enumerate only the "on"
+    bits with no VALUE flag), so _parse_bitset cannot interpret list form
+    reliably.
+    """
+
+    COMPACT_BITSETS = 1
 
 
 class NLMsgType(IntEnum):
