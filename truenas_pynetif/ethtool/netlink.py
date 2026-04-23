@@ -18,16 +18,20 @@ from truenas_pynetif.ethtool.constants import (
     EthtoolABitsetBits,
     EthtoolAFec,
     EthtoolAFeatures,
+    EthtoolAFlow,
     EthtoolAHeader,
     EthtoolALinkinfo,
     EthtoolALinkmodes,
     EthtoolALinkstate,
+    EthtoolAPrivflags,
+    EthtoolARss,
     EthtoolAString,
     EthtoolAStringset,
     EthtoolAStringsets,
     EthtoolAStrings,
     EthtoolAStrset,
     EthtoolMsg,
+    RxHashField,
 )
 from truenas_pynetif.netlink import DeviceNotFound, NetlinkError, OperationNotSupported
 from truenas_pynetif.netlink._core import (
@@ -567,6 +571,165 @@ class EthtoolNetlink:
             else:
                 result["disabled"].append(name)
         return result
+
+    def get_priv_flags(self, ifname: str) -> dict[str, bool]:
+        """Get driver private flags for an interface.
+
+        Returns a mapping of priv-flag name -> enabled state. The set of
+        available names is driver-specific (e.g. i40e exposes
+        "disable-fw-lldp", "link-down-on-close"; bnxt_en has a different
+        set). Returns an empty dict if the interface / driver does not
+        support priv-flags.
+        """
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        names = self._query_string_set(EthSS.PRIV_FLAGS, ifname)
+        if not names:
+            return {}
+
+        # Request compact-bitset format (VALUE/MASK as bitmaps) — the
+        # default list format uses NLA_FLAG semantics for per-bit VALUE
+        # which the shared _parse_bitset does not interpret reliably.
+        header = self._make_header(ifname, flags=1)  # ETHTOOL_FLAG_COMPACT_BITSETS
+        msg = self._pack_genlmsg(self._family_id, EthtoolMsg.PRIVFLAGS_GET, 1, header)
+        try:
+            self._sock.send(msg)
+        except OSError:
+            return {}
+
+        enabled_bits: set[int] = set()
+        mask_bits: set[int] = set()
+        try:
+            for msg_type, payload in self._recv_msgs():
+                if msg_type != self._family_id:
+                    continue
+                attrs = parse_attrs(payload, 4)
+                if EthtoolAPrivflags.FLAGS in attrs:
+                    _, enabled_bits, mask_bits = self._parse_bitset(
+                        attrs[EthtoolAPrivflags.FLAGS]
+                    )
+        except (DeviceNotFound, OperationNotSupported):
+            return {}
+
+        result: dict[str, bool] = {}
+        for idx, name in names.items():
+            if idx in mask_bits or idx in enabled_bits:
+                result[name] = idx in enabled_bits
+        return result
+
+    def set_priv_flags(self, ifname: str, flags: dict[str, bool]) -> None:
+        """Set driver private flags for an interface.
+
+        `flags` is a name -> desired-state mapping. Only the listed flags
+        are changed; others are left untouched. Names are driver-specific;
+        call `get_priv_flags()` first to discover what is available.
+
+        Raises ValueError if a requested name is not supported by the
+        driver on this interface.
+        """
+        if not flags:
+            return
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        names = self._query_string_set(EthSS.PRIV_FLAGS, ifname)
+        name_to_idx = {v: k for k, v in names.items()}
+
+        value_bits: list[int] = []
+        mask_bits: list[int] = []
+        for name, enabled in flags.items():
+            idx = name_to_idx.get(name)
+            if idx is None:
+                raise ValueError(f"{ifname}: unknown priv-flag {name!r}")
+            mask_bits.append(idx)
+            if enabled:
+                value_bits.append(idx)
+
+        bitset_size = max(name_to_idx.values()) + 1 if name_to_idx else 0
+        bitset = self._pack_compact_bitset(value_bits, mask_bits, bitset_size)
+        flags_attr = pack_nlattr_nested(EthtoolAPrivflags.FLAGS, bitset)
+        header = self._make_header(ifname)
+        msg = self._pack_genlmsg(
+            self._family_id, EthtoolMsg.PRIVFLAGS_SET, 1, header + flags_attr
+        )
+        self._sock.send(msg)
+        self._recv_msgs()
+
+    def set_rx_flow_hash(self, ifname: str, flow_type: str, hash_spec: str) -> None:
+        """Configure RX flow hash fields for a given flow type.
+
+        Uses `ETHTOOL_MSG_RSS_SET` (available since Linux v6.17).
+
+        `flow_type` is an ethtool flow-type name (e.g. "tcp4", "udp4").
+        `hash_spec` is the same short-form letter code used by
+        `ethtool -N <iface> rx-flow-hash <flow_type> <spec>` — e.g. "sdfn" =
+        src-IP + dst-IP + src-port + dst-port.
+
+        Raises ValueError for unknown flow-type / hash-spec input, and
+        NetlinkError if the kernel rejects the request (e.g. EOPNOTSUPP on
+        drivers that don't implement `set_rxfh_fields`).
+        """
+        flow_attr = _RX_FLOW_TYPE_BY_NAME.get(flow_type)
+        if flow_attr is None:
+            raise ValueError(f"unknown rx-flow-hash flow_type {flow_type!r}")
+        mask = 0
+        for ch in hash_spec:
+            bit = _RX_FLOW_HASH_SPEC_BITS.get(ch)
+            if bit is None:
+                raise ValueError(f"unknown rx-flow-hash spec character {ch!r}")
+            mask |= int(bit)
+
+        if self._family_id is None:
+            raise NetlinkError("Family ID not resolved")
+        if self._sock is None:
+            raise NetlinkError("Socket not connected")
+
+        header = self._make_header(ifname)
+        flow_hash_nest = pack_nlattr_nested(
+            EthtoolARss.FLOW_HASH, pack_nlattr_u32(int(flow_attr), mask)
+        )
+        msg = self._pack_genlmsg(
+            self._family_id, EthtoolMsg.RSS_SET, 1, header + flow_hash_nest
+        )
+        self._sock.send(msg)
+        self._recv_msgs()
+
+
+# `ethtool -N` hash-spec letter codes → RXH_* bit.
+_RX_FLOW_HASH_SPEC_BITS: dict[str, RxHashField] = {
+    "s": RxHashField.IP_SRC,
+    "d": RxHashField.IP_DST,
+    "f": RxHashField.L4_B_0_1,
+    "n": RxHashField.L4_B_2_3,
+    "v": RxHashField.VLAN,
+    "t": RxHashField.L3_PROTO,
+    "m": RxHashField.L2DA,
+    "r": RxHashField.IP6_FL,
+}
+
+
+_RX_FLOW_TYPE_BY_NAME: dict[str, EthtoolAFlow] = {
+    "ether": EthtoolAFlow.ETHER,
+    "ip4": EthtoolAFlow.IP4,
+    "ip6": EthtoolAFlow.IP6,
+    "tcp4": EthtoolAFlow.TCP4,
+    "tcp6": EthtoolAFlow.TCP6,
+    "udp4": EthtoolAFlow.UDP4,
+    "udp6": EthtoolAFlow.UDP6,
+    "sctp4": EthtoolAFlow.SCTP4,
+    "sctp6": EthtoolAFlow.SCTP6,
+    "ah4": EthtoolAFlow.AH4,
+    "ah6": EthtoolAFlow.AH6,
+    "esp4": EthtoolAFlow.ESP4,
+    "esp6": EthtoolAFlow.ESP6,
+    "ah-esp4": EthtoolAFlow.AH_ESP4,
+    "ah-esp6": EthtoolAFlow.AH_ESP6,
+}
 
 
 def _ensure_global_caches() -> tuple[MappingProxyType[int, str], MappingProxyType[int, str]]:

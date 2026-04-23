@@ -15,6 +15,7 @@ __all__ = (
     "set_link_up",
     "set_link_down",
     "set_link_mtu",
+    "set_link_name",
     "set_link_alias",
     "delete_link",
 )
@@ -52,6 +53,35 @@ def set_link_mtu(
     index = _resolve_index(name, index)
     ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
     attrs = pack_nlattr_u32(IFLAAttr.MTU, mtu)
+    msg = pack_nlmsg(
+        RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
+    )
+    sock.send(msg)
+    recv_msgs(sock)
+
+
+def set_link_name(
+    sock: socket.socket,
+    new_name: str,
+    name: str | None = None,
+    *,
+    index: int | None = None,
+) -> None:
+    """Rename a network interface.
+
+    The interface must be administratively DOWN before it can be renamed
+    (kernel requirement). The new name must be <=15 bytes and cannot
+    contain '/', ':', or whitespace, nor be "." or "..".
+
+    Args:
+        sock: Netlink socket from netlink_route()
+        new_name: New kernel interface name
+        name: Current interface name (mutually exclusive with index)
+        index: Current interface index (mutually exclusive with name)
+    """
+    index = _resolve_index(name, index)
+    ifinfomsg = struct.pack("BxHiII", AddressFamily.UNSPEC, 0, index, 0, 0)
+    attrs = pack_nlattr_str(IFLAAttr.IFNAME, new_name)
     msg = pack_nlmsg(
         RTMType.NEWLINK, NLMsgFlags.REQUEST | NLMsgFlags.ACK, ifinfomsg + attrs
     )
