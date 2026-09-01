@@ -104,11 +104,14 @@ def configure_bond(
     if link.bond_mode != target_mode:
         needs_down = True
     if (
-        config.xmit_hash_policy
+        config.xmit_hash_policy is not None
         and link.bond_xmit_hash_policy != config.xmit_hash_policy.value
     ):
         needs_down = True
-    if config.lacpdu_rate and link.bond_lacpdu_rate != config.lacpdu_rate.value:
+    if (
+        config.lacpdu_rate is not None
+        and link.bond_lacpdu_rate != config.lacpdu_rate.value
+    ):
         needs_down = True
     if config.primary and link.bond_primary != socket.if_nametoindex(config.primary):
         needs_down = True
@@ -125,9 +128,9 @@ def configure_bond(
             set_bond_mode(sock, target_mode, index=link.index)
             current_members = []
 
-        if config.xmit_hash_policy:
+        if config.xmit_hash_policy is not None:
             set_bond_xmit_hash_policy(sock, config.xmit_hash_policy, index=link.index)
-        if config.lacpdu_rate:
+        if config.lacpdu_rate is not None:
             set_lacpdu_rate(sock, config.lacpdu_rate, index=link.index)
         if config.miimon:
             set_bond_miimon(sock, config.miimon, index=link.index)
