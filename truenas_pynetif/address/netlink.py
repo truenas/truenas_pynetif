@@ -6,7 +6,7 @@ from truenas_pynetif.address.bond import (
     create_bond,
 )
 from truenas_pynetif.address.bridge import bridge_add_member, create_bridge, set_bridge_priority
-from truenas_pynetif.address.constants import IFOperState
+from truenas_pynetif.address.constants import IFOperState, RTMGroup
 from truenas_pynetif.address.dummy import create_dummy
 from truenas_pynetif.address.get_ipaddresses import get_addresses, get_link_addresses
 from truenas_pynetif.address.get_links import get_link, get_links, link_exists
@@ -15,11 +15,12 @@ from truenas_pynetif.address.get_routes import (
     get_link_routes,
     get_routes,
 )
+from truenas_pynetif.address.get_stats import get_link_stats
 from truenas_pynetif.address.link import delete_link, set_link_down, set_link_mtu, set_link_up
 from truenas_pynetif.address.route import add_route, change_route, delete_route, flush_routes
 from truenas_pynetif.address.rule import add_rule, delete_rule, get_rules
 from truenas_pynetif.address.vlan import create_vlan
-from truenas_pynetif.netlink import AddressInfo, DeviceNotFound, LinkInfo, RouteInfo, RuleInfo
+from truenas_pynetif.netlink import AddressInfo, DeviceNotFound, LinkInfo, LinkStats, RouteInfo, RuleInfo
 from truenas_pynetif.netlink._core import netlink_route
 
 __all__ = (
@@ -30,7 +31,9 @@ __all__ = (
     "DeviceNotFound",
     "IFOperState",
     "LinkInfo",
+    "LinkStats",
     "RouteInfo",
+    "RTMGroup",
     "RuleInfo",
     "add_route",
     "add_rule",
@@ -50,6 +53,7 @@ __all__ = (
     "get_link",
     "get_link_addresses",
     "get_link_routes",
+    "get_link_stats",
     "get_links",
     "get_routes",
     "get_rules",
