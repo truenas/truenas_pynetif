@@ -2,6 +2,7 @@ from truenas_pynetif.netlink.dataclass_types import (
     AddressInfo,
     InetDiagSockInfo,
     LinkInfo,
+    LinkStats,
     RouteInfo,
     RuleInfo,
 )
@@ -30,6 +31,7 @@ __all__ = (
     "DumpInterrupted",
     "InterfaceAlreadyExists",
     "LinkInfo",
+    "LinkStats",
     "NetlinkError",
     "OperationNotSupported",
     "ParentInterfaceNotFound",

@@ -44,6 +44,8 @@ class RTMType(IntEnum):
     NEWRULE = 32
     DELRULE = 33
     GETRULE = 34
+    NEWSTATS = 92
+    GETSTATS = 94
 
 
 class AddressFamily(IntEnum):
@@ -123,6 +125,13 @@ class IFLAInfoAttr(IntEnum):
     XSTATS = 3
     SLAVE_KIND = 4
     SLAVE_DATA = 5
+
+
+class IFLAStatsAttr(IntEnum):
+    """RTM_GETSTATS attributes"""
+
+    UNSPEC = 0
+    LINK_64 = 1
 
 
 class IFLAVlanAttr(IntEnum):
@@ -292,6 +301,10 @@ class IFOperState(IntEnum):
     TESTING = 4
     DORMANT = 5
     UP = 6
+
+
+class RTMGroup(IntFlag):
+    LINK = 1
 
 
 class RTEXTFilter(IntFlag):

@@ -88,6 +88,20 @@ class LinkInfo:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class LinkStats:
+    """Interface counters from rtnl_link_stats64."""
+
+    rx_packets: int
+    tx_packets: int
+    rx_bytes: int
+    tx_bytes: int
+    rx_errors: int
+    tx_errors: int
+    rx_dropped: int
+    tx_dropped: int
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class RouteInfo:
     """Routing table entry information."""
 

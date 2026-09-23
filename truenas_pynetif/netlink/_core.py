@@ -49,11 +49,11 @@ class NLMsgType:
 
 
 @contextmanager
-def netlink_route() -> Generator[socket.socket, None, None]:
-    """Context manager for NETLINK_ROUTE socket."""
+def netlink_route(groups: int = 0) -> Generator[socket.socket, None, None]:
+    """Context manager for NETLINK_ROUTE socket; a socket bound to groups must only be used to receive events."""
     sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_ROUTE)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
-    sock.bind((0, 0))
+    sock.bind((0, groups))
     try:
         yield sock
     finally:
